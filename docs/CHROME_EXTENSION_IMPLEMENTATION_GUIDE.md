@@ -196,6 +196,9 @@ Keep a separate source ZIP when tests, documentation, and development files shou
 
 ## 12. Release checklist
 
+- [ ] Increment semantic version for every new distributable build: patch for fixes, minor for backward-compatible features, major for breaking changes.
+- [ ] Keep the manifest, package metadata, report, instructions, ZIP filename, release commit, and Git tag on the same version.
+- [ ] Never replace a previously published versioned ZIP with different contents.
 - [ ] Manifest parses and uses MV3.
 - [ ] Permissions are minimal.
 - [ ] Icons exist at 16, 32, 48, and 128 pixels.
@@ -209,6 +212,7 @@ Keep a separate source ZIP when tests, documentation, and development files shou
 - [ ] Installation and shortcut-conflict instructions are current.
 - [ ] Generated profiles, dependencies, reports, and videos are excluded from Git.
 - [ ] Source is committed and pushed before installation into a daily-use profile.
+- [ ] Push a matching `vMAJOR.MINOR.PATCH` Git tag for the verified build.
 
 ## Official references
 
