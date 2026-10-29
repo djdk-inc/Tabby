@@ -3,7 +3,7 @@
 Date: 2026-10-28  
 Host: macOS (Apple Silicon)  
 Browser: Playwright Chromium 156.0.8078.4, isolated persistent contexts  
-Extension: Tabby 1.0.0, Manifest V3
+Extension: Tabby 1.0.1, Manifest V3
 
 ## Acceptance method
 

@@ -21,11 +21,11 @@ Tabby is a local-first Manifest V3 Chrome extension that consolidates the reques
 
 ## Install in Chrome
 
-1. Unzip `tabby-1.0.0.zip`.
+1. Unzip `tabby-1.0.1.zip`.
 2. Open `chrome://extensions`.
 3. Turn on **Developer mode**.
 4. Click **Load unpacked**.
-5. Select the unzipped `tabby-1.0.0` folder—the folder containing `manifest.json`.
+5. Select the unzipped `tabby-1.0.1` folder—the folder containing `manifest.json`.
 6. Pin **Tabby** from Chrome's Extensions menu if you want one-click access.
 
 Chrome may show a warning for developer-mode extensions after a restart. This build is intentionally unpacked and has not been submitted to the Chrome Web Store.
