@@ -1,0 +1,29 @@
+{
+  "manifest_version": 3,
+  "name": "Tabby",
+  "version": "1.0.0",
+  "description": "Friendly domain tab organization, sessions, saved tabs, deduplication, and window consolidation.",
+  "icons": {
+    "16": "icons/tabby-16.png",
+    "32": "icons/tabby-32.png",
+    "48": "icons/tabby-48.png",
+    "128": "icons/tabby-128.png"
+  },
+  "permissions": ["tabs", "tabGroups", "storage", "alarms"],
+  "background": { "service_worker": "service-worker.js", "type": "module" },
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "Tabby",
+    "default_icon": {
+      "16": "icons/tabby-16.png",
+      "32": "icons/tabby-32.png"
+    }
+  },
+  "options_page": "dashboard.html",
+  "commands": {
+    "organize-tabs": {
+      "suggested_key": { "default": "Ctrl+Shift+X", "mac": "Command+Shift+X" },
+      "description": "Merge, deduplicate, organize, and collapse inactive tabs"
+    }
+  }
+}
