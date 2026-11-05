@@ -1,0 +1,10 @@
+<!doctype html><html><head><meta charset="utf-8"><title>Tabby focus limit</title><link rel="stylesheet" href="ui.css"></head><body><main class="focus-page">
+<article class="card focus-card">
+  <div class="brand"><img class="mark" src="icons/tabby-48.png" alt=""><div><h1>Three tabs is enough for now</h1><div class="muted" id="scheduleNote">Tabby focus hours are active.</div></div></div>
+  <p>You already have 3 regular tabs open for <strong id="domain">this domain</strong> across your Chrome windows. Your requested URL is safe here while you decide:</p>
+  <code class="focus-url" id="blockedUrl"></code>
+  <h2>Go to an existing tab</h2><div class="existing-tabs" id="existingTabs"></div>
+  <div class="decision-actions"><button id="save">Save for later</button><button id="allow">Open anyway in this tab</button><button class="danger" id="close">Close this decision tab</button></div>
+  <p class="status" id="status" role="status"></p>
+</article>
+<script type="module" src="focus-limit.js"></script></main></body></html>

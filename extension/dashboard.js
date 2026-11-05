@@ -1,4 +1,4 @@
-import { DEFAULTS } from "./core.js";
+import { DEFAULTS, normalizeFocusDomains } from "./core.js";
 import { sessionsToCsv, sessionsToJson } from "./export.js";
 const $ = (s) => document.querySelector(s);
 document.querySelectorAll("[data-tab]").forEach((b) => b.onclick = () => { document.querySelectorAll("[data-tab],.panel").forEach((e) => e.classList.remove("active")); b.classList.add("active"); $(`#${b.dataset.tab}`).classList.add("active"); });
@@ -14,7 +14,12 @@ async function render() {
   document.querySelectorAll("[data-del-lib]").forEach((b) => b.onclick = () => act("delete-library", { id:b.dataset.delLib }));
   document.querySelectorAll("[data-restore]").forEach((b) => b.onclick = () => act("restore-session", { id:b.dataset.restore }));
   document.querySelectorAll("[data-del-session]").forEach((b) => b.onclick = () => act("delete-session", { id:b.dataset.delSession }));
-  const cfg = { ...DEFAULTS, ...(data.settings || {}) }; document.querySelectorAll("[data-setting]").forEach((el) => { el.type === "checkbox" ? el.checked = cfg[el.dataset.setting] : el.value = cfg[el.dataset.setting]; });
+  const cfg = { ...DEFAULTS, ...(data.settings || {}) };
+  document.querySelectorAll("[data-setting]").forEach((el) => {
+    const value = cfg[el.dataset.setting];
+    el.type === "checkbox" ? el.checked = value : el.value = Array.isArray(value) ? value.join("\n") : value;
+  });
+  document.querySelectorAll("[data-focus-day]").forEach((el) => { el.checked = cfg.focusDays.includes(Number(el.dataset.focusDay)); });
 }
 async function exportSessions(format) {
   const { sessions = [] } = await chrome.storage.local.get("sessions");
@@ -25,6 +30,20 @@ async function exportSessions(format) {
   link.href = url; link.download = `tabby-sessions-${new Date().toISOString().slice(0, 10)}.${format}`; link.click();
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
-document.querySelectorAll("[data-setting]").forEach((el) => el.onchange = async () => { const data = await chrome.storage.local.get("settings"); const value = el.type === "checkbox" ? el.checked : el.type === "number" ? Number(el.value) : el.value; await chrome.storage.local.set({ settings:{ ...DEFAULTS, ...(data.settings || {}), [el.dataset.setting]:value } }); $("#settingsStatus").textContent = "Saved."; });
+async function saveSetting(key, value) {
+  const data = await chrome.storage.local.get("settings");
+  await chrome.storage.local.set({ settings:{ ...DEFAULTS, ...(data.settings || {}), [key]:value } });
+  $("#settingsStatus").textContent = "Saved.";
+}
+document.querySelectorAll("[data-setting]").forEach((el) => el.onchange = async () => {
+  let value = el.type === "checkbox" ? el.checked : el.type === "number" ? Number(el.value) : el.value;
+  if (el.dataset.setting === "focusDomains") value = normalizeFocusDomains(value);
+  await saveSetting(el.dataset.setting, value);
+  if (el.dataset.setting === "focusDomains") el.value = value.join("\n");
+});
+document.querySelectorAll("[data-focus-day]").forEach((el) => el.onchange = async () => {
+  const days = [...document.querySelectorAll("[data-focus-day]:checked")].map((day) => Number(day.dataset.focusDay));
+  await saveSetting("focusDays", days);
+});
 function esc(s="") { return s.replace(/[&<>"']/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"})[c]); }
 render();

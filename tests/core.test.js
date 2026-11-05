@@ -1,6 +1,9 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { canonicalUrl, groupLabel, groupTitle, chooseDuplicateKeeper } from "../extension/core.js";
+import {
+  canonicalUrl, groupLabel, groupTitle, chooseDuplicateKeeper, isFocusScheduleActive,
+  normalizeFocusDomains, restrictedDomainForUrl
+} from "../extension/core.js";
 import { sessionsToCsv, sessionsToJson } from "../extension/export.js";
 import fs from "node:fs";
 
@@ -33,4 +36,21 @@ test("the composite organize shortcut is declared for macOS and other platforms"
   assert.deepEqual(Object.keys(manifest.commands), ["organize-tabs"]);
   assert.equal(manifest.commands["organize-tabs"].suggested_key.default, "Ctrl+Shift+X");
   assert.equal(manifest.commands["organize-tabs"].suggested_key.mac, "Command+Shift+X");
+});
+test("focus schedule includes its start, excludes its end, and honors selected days", () => {
+  assert.equal(isFocusScheduleActive(new Date(2026, 9, 26, 8, 59), "09:00", "17:00", [1]), false);
+  assert.equal(isFocusScheduleActive(new Date(2026, 9, 26, 9, 0), "09:00", "17:00", [1]), true);
+  assert.equal(isFocusScheduleActive(new Date(2026, 9, 26, 16, 59), "09:00", "17:00", [1]), true);
+  assert.equal(isFocusScheduleActive(new Date(2026, 9, 26, 17, 0), "09:00", "17:00", [1]), false);
+  assert.equal(isFocusScheduleActive(new Date(2026, 9, 27, 10, 0), "09:00", "17:00", [1]), false);
+});
+test("overnight focus hours attribute the after-midnight segment to the starting day", () => {
+  assert.equal(isFocusScheduleActive(new Date(2026, 9, 26, 22, 0), "22:00", "06:00", [1]), true);
+  assert.equal(isFocusScheduleActive(new Date(2026, 9, 27, 5, 59), "22:00", "06:00", [1]), true);
+  assert.equal(isFocusScheduleActive(new Date(2026, 9, 27, 6, 0), "22:00", "06:00", [1]), false);
+});
+test("focus domains normalize safely and include subdomains", () => {
+  assert.deepEqual(normalizeFocusDomains("www.Reddit.com\nhttps://youtube.com/watch\nreddit.com"), ["reddit.com", "youtube.com"]);
+  assert.equal(restrictedDomainForUrl("https://old.reddit.com/r/test", ["reddit.com"]), "reddit.com");
+  assert.equal(restrictedDomainForUrl("https://notreddit.com/", ["reddit.com"]), null);
 });

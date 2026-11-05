@@ -17,15 +17,18 @@ Tabby is a local-first Manifest V3 Chrome extension that consolidates the reques
 - Exports all saved sessions as JSON or flat CSV from the Sessions screen.
 - Consolidates normal windows into the current window and preserves pinned tabs.
 - Coalesces same-domain groups from merged windows into one native group.
+- Limits configured domains to 3 regular tabs across all normal Chrome windows during configurable local-time focus hours and weekdays.
+- Replaces a fourth limited tab with a decision page that preserves the requested URL and offers existing-tab focus, save-for-later, explicit bypass, or close actions.
+- Treats protected pinned and audible tabs as focus-limit exceptions.
 - Stores all settings, saved tabs, and sessions locally in `chrome.storage.local`.
 
 ## Install in Chrome
 
-1. Unzip `tabby-1.0.1.zip`.
+1. Unzip `tabby-1.1.1.zip`.
 2. Open `chrome://extensions`.
 3. Turn on **Developer mode**.
 4. Click **Load unpacked**.
-5. Select the unzipped `tabby-1.0.1` folder—the folder containing `manifest.json`.
+5. Select the unzipped `tabby-1.1.1` folder—the folder containing `manifest.json`.
 6. Pin **Tabby** from Chrome's Extensions menu if you want one-click access.
 
 Chrome may show a warning for developer-mode extensions after a restart. This build is intentionally unpacked and has not been submitted to the Chrome Web Store.
@@ -44,6 +47,8 @@ Chrome can leave a suggested shortcut unassigned when it conflicts with the brow
 
 The toolbar popup exposes the common actions. Open **Library, sessions & settings** for saved tabs, session restore, and configuration.
 
+Focus tab limits are off until enabled. In Settings, choose local start and end times, active weekdays, and one limited domain per line. Equal start and end times mean all day on the selected days; overnight ranges continue into the next morning. Subdomains count under the configured parent domain. Limits apply only to new navigations while the schedule is active, so enabling a schedule never retroactively closes existing tabs.
+
 Automatic grouping only handles `http://` and `https://` tabs. Chrome internal pages, extension pages, and protected pinned/audible tabs are deliberately left alone. Domain mode uses a compact built-in public-suffix heuristic; choose **Subdomain** when exact host boundaries matter.
 
 ## Test
@@ -57,6 +62,6 @@ npm run test:unit
 npm run test:e2e
 ```
 
-The E2E suite launches an isolated, headless Chromium profile with the real unpacked extension. It does not mock `chrome.tabs`, `chrome.tabGroups`, `chrome.windows`, or `chrome.storage`. Set `TABBY_HEADED=1` only when a native browser window is explicitly wanted.
+The E2E suite launches an isolated, headed Chromium profile with the real unpacked extension. It does not mock `chrome.tabs`, `chrome.tabGroups`, `chrome.windows`, or `chrome.storage`. Current Chromium headless mode does not reliably initialize unpacked MV3 service workers, so the suite intentionally uses a real browser window.
 
 See `TEST_REPORT.md` for the observed results and limitations.

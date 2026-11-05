@@ -1,12 +1,13 @@
 {
   "name": "tabby",
-  "version": "1.0.1",
+  "version": "1.1.1",
   "private": true,
   "type": "module",
   "scripts": {
     "test": "playwright test",
     "test:unit": "node --test tests/core.test.js",
-    "test:e2e": "playwright test tests/extension.spec.js"
+    "test:e2e": "playwright test tests/extension.spec.js",
+    "test:manual-focus": "node tests/manual-focus-exercise.mjs"
   },
   "devDependencies": {
     "@playwright/test": "^1.56.1"

@@ -25,6 +25,7 @@ async function api(fn, arg) {
     if (fn === "createWindow") return chrome.windows.create(arg);
     if (fn === "createTab") return chrome.tabs.create(arg);
     if (fn === "updateTab") return chrome.tabs.update(arg.id, arg.props);
+    if (fn === "removeTabs") return chrome.tabs.remove(arg);
     if (fn === "storage") return chrome.storage.local.get(arg);
   }, [fn, arg]);
   await page.close(); return out;
@@ -39,7 +40,7 @@ test.beforeAll(async () => {
   origin = `http://127.0.0.1:${server.address().port}`;
   profilePath = fs.mkdtempSync(path.resolve("work/e2e-profile-"));
   context = await chromium.launchPersistentContext(profilePath, {
-    headless: process.env.TABBY_HEADED !== "1",
+    headless: false,
     args: [`--disable-extensions-except=${extensionPath}`, `--load-extension=${extensionPath}`, "--no-first-run", "--no-default-browser-check"]
   });
   let workers = context.serviceWorkers();
@@ -65,7 +66,8 @@ test("groups existing and newly opened tabs by domain and sorts group titles", a
   const p2 = await context.newPage(); await p2.goto("https://example.com/?e2e=1");
   const p3 = await context.newPage(); await p3.goto("https://www.iana.org/domains/reserved");
   const tabs = await api("tabs", {}); const target = tabs.find((t) => t.url === `${origin}/a`).windowId;
-  await api("createTab", { windowId:target, url:"https://x.com/?tabby-icon-test=1", active:false });
+  const iconTab = await api("createTab", { windowId:target, url:"https://x.com/?tabby-icon-test=1", active:false });
+  await expect.poll(async () => (await api("tabs", { windowId:target })).find((tab) => tab.id === iconTab.id)?.url).toContain("x.com/");
   const result = await rpc("organize", { windowId:target }); expect(result.groups).toBeGreaterThanOrEqual(3);
   const groups = await api("groups", { windowId:target });
   const titles = groups.map((g) => g.title); expect(titles).toEqual([...titles].sort((a,b) => a.localeCompare(b)));
@@ -190,4 +192,79 @@ test("Organize Now merges, deduplicates, groups, and evaluates inactive collapse
   expect(result.windows).toBeGreaterThanOrEqual(1); expect(result.moved).toBeGreaterThanOrEqual(2); expect(result.removed).toBeGreaterThanOrEqual(1); expect(result.groups).toBeGreaterThanOrEqual(1); expect(result.collapsed).toBeGreaterThanOrEqual(0);
   const after = await api("tabs", { windowId:target }); expect(after.filter((t) => t.url?.includes("quick=1"))).toHaveLength(1); expect(after.some((t) => t.url?.includes("quick-window=1") && t.groupId >= 0)).toBe(true);
   await control.close();
+});
+
+test("focus schedule boundaries execute in the real extension browser context", async () => {
+  const page = await context.newPage();
+  await page.goto(`chrome-extension://${extensionId}/dashboard.html`);
+  const results = await page.evaluate(async () => {
+    const { isFocusScheduleActive } = await import(chrome.runtime.getURL("core.js"));
+    return [
+      isFocusScheduleActive(new Date(2026, 9, 26, 8, 59), "09:00", "17:00", [1]),
+      isFocusScheduleActive(new Date(2026, 9, 26, 9, 0), "09:00", "17:00", [1]),
+      isFocusScheduleActive(new Date(2026, 9, 26, 17, 0), "09:00", "17:00", [1]),
+      isFocusScheduleActive(new Date(2026, 9, 26, 22, 0), "22:00", "06:00", [1]),
+      isFocusScheduleActive(new Date(2026, 9, 27, 5, 59), "22:00", "06:00", [1]),
+      isFocusScheduleActive(new Date(2026, 9, 27, 6, 0), "22:00", "06:00", [1])
+    ];
+  });
+  expect(results).toEqual([false, true, false, true, true, false]);
+  await page.close();
+});
+
+test("fourth domain tab is safely gated across windows with explicit and protected exceptions", async () => {
+  const control = await context.newPage();
+  await control.goto(`chrome-extension://${extensionId}/dashboard.html`);
+  const priorTabs = await control.evaluate(() => chrome.tabs.query({}));
+  const localIds = priorTabs.filter((tab) => tab.url?.startsWith(origin)).map((tab) => tab.id);
+  if (localIds.length) await control.evaluate((ids) => chrome.tabs.remove(ids), localIds);
+  await control.evaluate(async () => {
+    const { settings = {} } = await chrome.storage.local.get("settings");
+    await chrome.storage.local.set({ settings:{ ...settings, focusLimitEnabled:true, focusStart:"00:00", focusEnd:"00:00", focusDays:[0,1,2,3,4,5,6], focusDomains:["127.0.0.1"], autoOrganize:false, dedupeOnNavigate:false, protectPinned:true, protectAudible:true } });
+  });
+
+  const first = await api("createTab", { url:`${origin}/a?focus=1`, active:false });
+  const second = await api("createTab", { windowId:first.windowId, url:`${origin}/a?focus=2`, active:false });
+  const otherWindow = await api("createWindow", { url:`${origin}/a?focus=3`, focused:false });
+  const windowIds = new Set([first.windowId, otherWindow.id]);
+  expect(windowIds.size).toBe(2);
+
+  const fourth = await api("createTab", { windowId:first.windowId, url:`${origin}/a?focus=4`, active:false });
+  await expect.poll(async () => (await api("tabs", {})).find((tab) => tab.id === fourth.id)?.url).toContain("focus-limit.html");
+  const decision = context.pages().find((page) => page.url().includes("focus-limit.html"));
+  expect(decision).toBeTruthy();
+  await expect(decision.getByRole("heading", { name:"Three tabs is enough for now" })).toBeVisible();
+  await expect(decision.getByText(`${origin}/a?focus=4`, { exact:true })).toBeVisible();
+  await expect(decision.locator("#existingTabs button")).toHaveCount(3);
+
+  await decision.getByRole("button", { name:"Open anyway in this tab" }).click();
+  await expect.poll(async () => (await api("tabs", {})).find((tab) => tab.id === fourth.id)?.url).toBe(`${origin}/a?focus=4`);
+
+  const pinned = await api("createTab", { windowId:first.windowId, url:"about:blank", active:false, pinned:true });
+  await api("updateTab", { id:pinned.id, props:{ url:`${origin}/b?focus=pinned` } });
+  await expect.poll(async () => (await api("tabs", {})).find((tab) => tab.id === pinned.id)?.url).toBe(`${origin}/b?focus=pinned`);
+
+  await control.evaluate(async () => {
+    const { settings = {} } = await chrome.storage.local.get("settings");
+    await chrome.storage.local.set({ settings:{ ...settings, focusDays:[] } });
+  });
+  const outside = await api("createTab", { windowId:first.windowId, url:`${origin}/b?focus=outside`, active:false });
+  await expect.poll(async () => (await api("tabs", {})).find((tab) => tab.id === outside.id)?.url).toBe(`${origin}/b?focus=outside`);
+  await control.close();
+});
+
+test("focus settings persist through the dashboard controls", async () => {
+  const page = await context.newPage();
+  await page.goto(`chrome-extension://${extensionId}/dashboard.html`);
+  await page.getByRole("button", { name:"Settings" }).click();
+  await page.locator('[data-setting="focusLimitEnabled"]').check();
+  await page.locator('[data-setting="focusStart"]').fill("08:30");
+  await page.locator('[data-setting="focusStart"]').dispatchEvent("change");
+  await page.locator('[data-setting="focusDomains"]').fill("www.reddit.com\nyoutube.com");
+  await page.locator('[data-setting="focusDomains"]').dispatchEvent("change");
+  const stored = await page.evaluate(() => chrome.storage.local.get("settings"));
+  expect(stored.settings.focusLimitEnabled).toBe(true);
+  expect(stored.settings.focusStart).toBe("08:30");
+  expect(stored.settings.focusDomains).toEqual(["reddit.com", "youtube.com"]);
+  await page.close();
 });

@@ -18,6 +18,20 @@ button:hover,.button:hover { background:#324564; } button.primary { background:v
 .row { display:flex; align-items:center; justify-content:space-between; gap:14px; }
 .button-row { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
 .url { color:var(--muted); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:650px; }
-label.setting { display:flex; justify-content:space-between; gap:20px; padding:12px 0; border-bottom:1px solid #263247; }
-input,select { background:#0c111b; color:var(--text); border:1px solid #34435e; padding:8px; border-radius:7px; }
+label.setting, .setting { display:flex; justify-content:space-between; align-items:center; gap:20px; padding:12px 0; border-bottom:1px solid #263247; }
+input,select,textarea { background:#0c111b; color:var(--text); border:1px solid #34435e; padding:8px; border-radius:7px; }
+textarea { width:100%; resize:vertical; font:13px/1.45 ui-monospace, SFMono-Regular, Menlo, monospace; }
+fieldset { border:0; margin:14px 0; padding:0; }
+legend { margin-bottom:8px; }
+.weekday-grid { display:flex; flex-wrap:wrap; gap:8px 14px; }
+.weekday-grid label { display:flex; align-items:center; gap:5px; }
+.stacked-setting { display:grid; gap:7px; margin-top:14px; }
+.time-range { display:flex; align-items:center; gap:8px; }
+.focus-page { max-width:680px; min-height:100vh; display:grid; align-content:center; }
+.focus-card { padding:28px; }
+.focus-card h1 { font-size:28px; }
+.focus-url { display:block; margin:14px 0; padding:10px; background:#0c111b; border-radius:8px; overflow-wrap:anywhere; color:var(--muted); }
+.existing-tabs { display:grid; gap:8px; margin:16px 0; }
+.existing-tabs button { text-align:left; }
+.decision-actions { display:flex; flex-wrap:wrap; gap:8px; margin-top:18px; }
 .danger { color:var(--danger); }

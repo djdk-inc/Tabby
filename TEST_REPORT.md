@@ -1,20 +1,20 @@
 # Tabby verification report
 
-Date: 2026-10-28  
-Host: macOS (Apple Silicon)  
-Browser: Playwright Chromium 156.0.8078.4, isolated persistent contexts  
-Extension: Tabby 1.0.1, Manifest V3
+Date: 2026-11-04
+Host: macOS (Apple Silicon)
+Browser: Playwright Chromium 156.0.8078.80, isolated persistent contexts
+Extension: Tabby 1.1.1, Manifest V3
 
 ## Acceptance method
 
-The automated acceptance suite loaded the actual unpacked extension with `--load-extension` in a new persistent browser profile. Assertions queried the real `chrome.tabs`, `chrome.tabGroups`, `chrome.windows`, and `chrome.storage.local` APIs from extension pages. Test pages were opened and manipulated as real tabs. No browser APIs were mocked.
+The automated acceptance suite loaded the actual unpacked extension with `--load-extension` in a new persistent browser profile. The final 15-test run used the folder extracted from the exact distributed ZIP. Assertions queried the real `chrome.tabs`, `chrome.tabGroups`, `chrome.windows`, and `chrome.storage.local` APIs from extension pages. Test pages were opened and manipulated as real tabs. No browser APIs were mocked.
 
 ## Results
 
 | Outcome | Status | Browser evidence |
 |---|---:|---|
 | Popup and dashboard render | Verified | Real `chrome-extension://` pages rendered and dashboard screenshot captured. |
-| Install-ready ZIP layout | Verified | The distributed ZIP was extracted and its root folder loaded directly into contained Chromium; the real popup and dashboard rendered. |
+| Install-ready ZIP layout | Verified | The distributed ZIP was extracted and its root folder loaded directly into contained Chromium; all 15 real-browser E2E checks passed against it. |
 | Organize existing tabs by domain | Verified | Live localhost, `example.com`, and `iana.org` tabs received native groups. |
 | Alphabetical native group order | Verified | Tab-strip group order matched locale-sorted group titles. |
 | Compact recognized-site labels | Verified | A real `x.com` tab formed a native group titled `𝕏`; unknown sites retained their domain labels. |
@@ -34,8 +34,14 @@ The automated acceptance suite loaded the actual unpacked extension with `--load
 | Window consolidation | Verified | A second normal window was merged into the target and its pinned tab remained pinned. |
 | Cross-window group coalescing | Verified | Same-domain tabs from different windows ended in one native group after consolidation. |
 | Settings persistence | Verified | A dashboard UI change persisted through `chrome.storage.local`. |
+| Configurable focus hours | Verified | Real Settings controls persisted enablement, local start time, weekdays, and normalized domain entries. |
+| Schedule boundaries | Verified | Browser and unit checks confirmed start-inclusive/end-exclusive daytime hours plus overnight continuation into the next morning. |
+| Fourth-tab safe gate | Verified | A fourth limited-domain tab remained open as a Tabby decision page with the requested URL preserved and 3 existing-tab choices. |
+| Cross-window limit | Verified | The 3 existing tabs were split across two normal windows and still counted toward one domain-wide limit. |
+| Explicit bypass and exceptions | Verified | **Open anyway** restored the fourth URL in the same tab; a pinned tab and an inactive schedule bypassed the gate. |
+| Non-regression | Verified | Grouping, compact labels, deduplication, pinned/audible protection, sessions, exports, collapse, and window merge tests remained green. |
 
-Final automated result: **6/6 feature/unit tests and 12/12 real-browser E2E tests passed**. Current acceptance runs use a unique profile and a headed browser inside a contained virtual Linux display.
+Final automated result: **9/9 feature/unit tests and 15/15 real-browser E2E tests passed**. A separate headed Playwright exercise also passed the fourth-tab, cross-window, explicit-bypass, pinned-exception, and schedule-boundary scenarios. Current acceptance runs use a unique profile and headed Playwright Chromium.
 
 ## Original-extension inspection
 

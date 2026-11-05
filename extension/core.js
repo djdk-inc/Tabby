@@ -8,8 +8,15 @@ export const DEFAULTS = {
   dedupeOnNavigate: true,
   protectPinned: true,
   protectAudible: true,
-  stripTracking: true
+  stripTracking: true,
+  focusLimitEnabled: false,
+  focusStart: "09:00",
+  focusEnd: "17:00",
+  focusDays: [1, 2, 3, 4, 5],
+  focusDomains: ["youtube.com", "reddit.com", "x.com", "instagram.com", "tiktok.com"]
 };
+
+export const FOCUS_TAB_LIMIT = 3;
 
 const MULTIPART_SUFFIXES = new Set(["co.uk", "org.uk", "com.au", "co.jp", "co.nz", "com.br"]);
 const TRACKING = /^(utm_[a-z]+|fbclid|gclid|mc_cid|mc_eid)$/i;
@@ -73,4 +80,48 @@ export function chooseDuplicateKeeper(tabs, settings) {
     (b.lastAccessed || 0) - (a.lastAccessed || 0) ||
     a.id - b.id
   )[0];
+}
+
+export function normalizeFocusDomains(value = []) {
+  const entries = Array.isArray(value) ? value : String(value).split(/[\s,]+/);
+  return [...new Set(entries.map((entry) => {
+    const raw = String(entry || "").trim().toLowerCase();
+    if (!raw) return null;
+    try {
+      return new URL(raw.includes("://") ? raw : `https://${raw}`).hostname.replace(/^www\./, "");
+    } catch {
+      return null;
+    }
+  }).filter(Boolean))];
+}
+
+export function restrictedDomainForUrl(raw, domains = []) {
+  if (!isWebUrl(raw)) return null;
+  const host = new URL(raw).hostname.toLowerCase().replace(/^www\./, "");
+  return normalizeFocusDomains(domains).find((domain) => host === domain || host.endsWith(`.${domain}`)) || null;
+}
+
+function minuteOfDay(value) {
+  const match = /^(\d{2}):(\d{2})$/.exec(String(value));
+  if (!match) return null;
+  const hours = Number(match[1]);
+  const minutes = Number(match[2]);
+  return hours < 24 && minutes < 60 ? hours * 60 + minutes : null;
+}
+
+export function isFocusScheduleActive(now, start = "09:00", end = "17:00", days = [1, 2, 3, 4, 5]) {
+  const date = now instanceof Date ? now : new Date(now);
+  if (Number.isNaN(date.getTime())) return false;
+  const startMinute = minuteOfDay(start);
+  const endMinute = minuteOfDay(end);
+  if (startMinute === null || endMinute === null) return false;
+  const enabledDays = new Set((Array.isArray(days) ? days : []).map(Number));
+  const currentMinute = date.getHours() * 60 + date.getMinutes();
+  if (startMinute === endMinute) return enabledDays.has(date.getDay());
+  if (startMinute < endMinute) {
+    return enabledDays.has(date.getDay()) && currentMinute >= startMinute && currentMinute < endMinute;
+  }
+  if (currentMinute >= startMinute) return enabledDays.has(date.getDay());
+  const previousDay = (date.getDay() + 6) % 7;
+  return currentMinute < endMinute && enabledDays.has(previousDay);
 }
