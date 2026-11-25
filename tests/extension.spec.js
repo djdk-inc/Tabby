@@ -202,6 +202,42 @@ test("merges normal windows while preserving pinned state", async () => {
   const groups = await api("groups", { windowId:target }); expect(groups.filter((g) => g.title === "127.0.0.1")).toHaveLength(1);
 });
 
+test("organize survives arbitrary tab-strip layouts and concurrent tab changes", async () => {
+  const port = new URL(origin).port;
+  const page = await context.newPage(); await page.goto(`chrome-extension://${extensionId}/dashboard.html`);
+  const errors = await page.evaluate(async (port) => {
+    const hosts = ["127.0.0.1", "localhost", "a.localhost", "b.localhost", "c.localhost"];
+    let seed = 7; const rand = (n) => { seed = (seed * 1103515245 + 12345) % 2147483648; return seed % n; };
+    const send = (msg) => chrome.runtime.sendMessage(msg);
+    const errors = [];
+    for (let round = 0; round < 30; round++) {
+      const count = 4 + rand(8);
+      const urls = Array.from({ length: count }, (_, i) => rand(5) === 0 ? "about:blank" : `http://${hosts[rand(hosts.length)]}:${port}/a?r=${round}&i=${i}`);
+      const win = await chrome.windows.create({ url: urls, focused: false });
+      const tabs = await chrome.tabs.query({ windowId: win.id });
+      for (const tab of tabs) if (rand(6) === 0) await chrome.tabs.update(tab.id, { pinned: true });
+      const loose = (await chrome.tabs.query({ windowId: win.id, pinned: false })).map((t) => t.id);
+      for (let g = 0; g < 2 && loose.length > 1; g++) {
+        const pick = loose.splice(rand(loose.length), 1 + rand(2));
+        const gid = await chrome.tabs.group({ tabIds: pick, createProperties: { windowId: win.id } });
+        await chrome.tabGroups.update(gid, { title: ["Work", "zzz", "Alpha"][rand(3)] });
+      }
+      const concurrent = round % 2 === 1;
+      const runs = [send({ type: "organize", windowId: win.id })];
+      if (concurrent) {
+        const victims = (await chrome.tabs.query({ windowId: win.id, pinned: false })).slice(0, 2).map((t) => t.id);
+        runs.push(new Promise((r) => setTimeout(r, rand(20))).then(() => chrome.tabs.remove(victims)).then(() => ({ ok: true })));
+        runs.push(send({ type: "organize", windowId: win.id }));
+      }
+      for (const r of await Promise.all(runs)) if (!r.ok) errors.push(`round ${round}: ${r.error}`);
+      await chrome.windows.remove(win.id).catch(() => {});
+    }
+    return errors;
+  }, port);
+  await page.close();
+  expect(errors).toEqual([]);
+});
+
 test("settings persist through the real dashboard UI", async () => {
   const page = await context.newPage(); await page.goto(`chrome-extension://${extensionId}/dashboard.html`); await page.getByRole("button", { name:"Settings" }).click();
   const mode = page.locator('[data-setting="groupingMode"]'); await mode.selectOption("subdomain"); await expect(page.getByText("Saved.")).toBeVisible();
