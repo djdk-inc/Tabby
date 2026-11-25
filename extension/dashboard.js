@@ -3,19 +3,22 @@ import { reportPageErrors } from "./errors.js";
 reportPageErrors("dashboard");
 import { sessionsToCsv, sessionsToJson } from "./export.js";
 const $ = (s) => document.querySelector(s);
-document.querySelectorAll("[data-tab]").forEach((b) => b.onclick = () => { document.querySelectorAll("[data-tab],.panel").forEach((e) => e.classList.remove("active")); b.classList.add("active"); $(`#${b.dataset.tab}`).classList.add("active"); });
+function showTab(name) {
+  if (!document.querySelector(`[data-tab="${name}"]`)) return;
+  document.querySelectorAll("[data-tab],.panel").forEach((e) => e.classList.remove("active"));
+  document.querySelector(`[data-tab="${name}"]`).classList.add("active"); $(`#${name}`).classList.add("active");
+}
+document.querySelectorAll("[data-tab]").forEach((b) => b.onclick = () => { showTab(b.dataset.tab); history.replaceState(null, "", `#${b.dataset.tab}`); });
+showTab(location.hash.slice(1));
 async function act(type, extra = {}) { const r = await chrome.runtime.sendMessage({ type, ...extra }); if (!r.ok) throw new Error(r.error); await render(); return r; }
-$("#saveOpen").onclick = () => act("save-tabs"); $("#saveSession").onclick = () => act("save-session");
+$("#saveSession").onclick = () => act("save-session");
 $("#exportSessionsJson").onclick = () => exportSessions("json");
 $("#exportSessionsCsv").onclick = () => exportSessions("csv");
 async function render() {
-  const data = await chrome.storage.local.get(["library", "sessions", "settings"]); const library = data.library || []; const sessions = data.sessions || [];
-  $("#libraryList").innerHTML = library.length ? library.map((x) => `<article class="card row"><div><strong>${esc(x.title)}</strong><div class="url">${esc(x.url)}</div></div><div><button data-open="${esc(x.url)}">Open</button> <button class="danger" data-del-lib="${x.id}">Remove</button></div></article>`).join("") : `<div class="card muted">No saved tabs yet.</div>`;
+  const data = await chrome.storage.local.get(["sessions", "settings"]); const sessions = data.sessions || [];
   const openKeys = new Set([...document.querySelectorAll("#sessionList details[open]")].map((d) => d.dataset.key));
   $("#sessionList").innerHTML = sessions.length ? sessions.map(sessionHtml).join("") : `<div class="card muted">No sessions yet.</div>`;
   document.querySelectorAll("#sessionList details").forEach((d) => { d.open = openKeys.has(d.dataset.key); });
-  document.querySelectorAll("[data-open]").forEach((b) => b.onclick = () => chrome.tabs.create({ url: b.dataset.open }));
-  document.querySelectorAll("[data-del-lib]").forEach((b) => b.onclick = () => act("delete-library", { id:b.dataset.delLib }));
   // Buttons sit inside <summary>; stop the click from also toggling the row.
   const onButton = (sel, fn) => document.querySelectorAll(sel).forEach((b) => b.onclick = (e) => { e.preventDefault(); e.stopPropagation(); $("#sessionStatus").textContent = ""; fn(b.dataset).catch(showSessionError); });
   onButton("[data-restore]", (d) => act("restore-session", { id:d.restore }));

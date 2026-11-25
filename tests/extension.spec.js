@@ -56,11 +56,16 @@ test("popup and dashboard render as real extension pages", async () => {
   const page = await context.newPage();
   await page.goto(`chrome-extension://${extensionId}/popup.html`);
   await expect(page.getByRole("heading", { name:"Tabby" })).toBeVisible();
-  await expect(page.getByRole("button", { name:"Organize now" })).toBeVisible();
-  await page.goto(`chrome-extension://${extensionId}/dashboard.html`);
-  await expect(page.getByText("Saved tabs", { exact:true }).first()).toBeVisible();
-  await page.screenshot({ path:"work/dashboard.png", fullPage:true });
-  await page.close();
+  await expect(page.locator("button")).toHaveText(["Organize", "Sessions", "Settings"]);
+  await expect(page.getByText("A calmer browser")).toHaveCount(0);
+  const opened = context.waitForEvent("page"); await page.getByRole("button", { name:"Settings" }).click();
+  const settingsPage = await opened; await expect(settingsPage.locator("#settings")).toBeVisible(); await settingsPage.close();
+  await expect.poll(() => page.isClosed()).toBe(true); // popup closes itself after opening a page
+  const dash = await context.newPage(); await dash.goto(`chrome-extension://${extensionId}/dashboard.html`);
+  await expect(dash.locator("[data-tab]")).toHaveText(["Sessions", "Settings"]);
+  await expect(dash.locator("#sessions")).toBeVisible();
+  await dash.screenshot({ path:"work/dashboard.png", fullPage:true });
+  await dash.close();
 });
 
 test("groups existing and newly opened tabs by domain and sorts group titles", async () => {
@@ -106,28 +111,12 @@ test("protects a genuinely audible duplicate tab", async () => {
   const after = await api("tabs", { windowId:audibleTab.windowId }); expect(after.some((t) => t.id === audibleTab.id && t.audible)).toBe(true); expect(after.some((t) => t.id === duplicateTab.id)).toBe(false);
 });
 
-test("saves tabs to library and saves/restores sessions", async () => {
-  const seed = await context.newPage(); await seed.goto(`${origin}/a?library=1`);
-  const save = await rpc("save-tabs"); expect(save.saved).toBeGreaterThan(0);
+test("saves and restores sessions", async () => {
+  const seed = await context.newPage(); await seed.goto(`${origin}/a?session=1`);
   await rpc("save-session", { name:"E2E Session" });
-  const stored = await api("storage", ["library", "sessions"]); expect(stored.library.length).toBeGreaterThan(0); expect(stored.sessions[0].name).toBe("E2E Session");
+  const stored = await api("storage", ["sessions"]); expect(stored.sessions[0].name).toBe("E2E Session");
   const before = (await api("windows")).length; const restored = await rpc("restore-session", { id:stored.sessions[0].id }); expect(restored.windows).toBeGreaterThan(0);
   expect((await api("windows")).length).toBeGreaterThan(before);
-});
-
-test("deduplicates saved tabs and shows a flat alphabetical library", async () => {
-  const control = await context.newPage(); await control.goto(`chrome-extension://${extensionId}/dashboard.html`);
-  await control.evaluate(async () => { const { settings = {} } = await chrome.storage.local.get("settings"); await chrome.storage.local.set({ library:[], settings:{ ...settings, autoOrganize:false, dedupeOnNavigate:false, stripTracking:true } }); });
-  const one = await context.newPage(); await one.goto(`${origin}/a?project=library`);
-  const duplicate = await context.newPage(); await duplicate.goto(`${origin}/a?project=library&utm_source=copy#section`);
-  const other = await context.newPage(); await other.goto("https://example.com/?saved-library=1");
-  const tabs = await control.evaluate(() => chrome.tabs.query({}));
-  const ids = tabs.filter((t) => t.url?.includes("project=library") || t.url?.includes("saved-library=1")).map((t) => t.id);
-  const result = await control.evaluate((tabIds) => chrome.runtime.sendMessage({ type:"save-tabs", tabIds }), ids); expect(result.ok).toBe(true); expect(result.saved).toBe(2);
-  await control.reload();
-  const titles = await control.locator("#libraryList article strong").allTextContents(); expect(titles).toEqual([...titles].sort((a, b) => a.localeCompare(b))); expect(titles).toHaveLength(2);
-  const stored = await control.evaluate(() => chrome.storage.local.get("library")); expect(stored.library).toHaveLength(2); expect(new Set(stored.library.map((x) => x.domain))).toEqual(new Set(["127.0.0.1", "example.com"]));
-  await control.close();
 });
 
 test("sessions list nests windows and URLs and restores one window in its saved mode", async () => {
@@ -326,6 +315,15 @@ test("fourth domain tab is safely gated across windows with explicit and protect
 
   await decision.getByRole("button", { name:"Open anyway in this tab" }).click();
   await expect.poll(async () => (await api("tabs", {})).find((tab) => tab.id === fourth.id)?.url).toBe(`${origin}/a?focus=4`);
+
+  const fifth = await api("createTab", { windowId:first.windowId, url:`${origin}/a?focus=5`, active:false });
+  await expect.poll(async () => (await api("tabs", {})).find((tab) => tab.id === fifth.id)?.url).toContain("focus-limit.html");
+  const decision5 = context.pages().find((page) => page.url().includes("focus-limit.html"));
+  await decision5.getByRole("button", { name:"Save for later" }).click();
+  await expect(decision5.getByText("Saved to Sessions.")).toBeVisible();
+  const saved = (await api("storage", "sessions")).sessions[0];
+  expect(saved.name).toBe("Saved for later: 127.0.0.1"); expect(saved.windows[0].tabs[0].url).toBe(`${origin}/a?focus=5`);
+  await api("removeTabs", fifth.id);
 
   const pinned = await api("createTab", { windowId:first.windowId, url:"about:blank", active:false, pinned:true });
   await api("updateTab", { id:pinned.id, props:{ url:`${origin}/b?focus=pinned` } });

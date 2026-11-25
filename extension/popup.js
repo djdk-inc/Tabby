@@ -2,14 +2,18 @@ import { reportPageErrors } from "./errors.js";
 reportPageErrors("popup");
 const status = document.querySelector("#status");
 const focusStatus = document.querySelector("#focusStatus");
-document.querySelectorAll("[data-action]").forEach((button) => button.addEventListener("click", async () => {
+// Organize = merge windows, remove duplicates, group and sort, collapse inactive groups.
+document.querySelector("#organize").addEventListener("click", async () => {
   status.textContent = "Working…";
-  const result = await chrome.runtime.sendMessage({ type: button.dataset.action });
-  status.textContent = result.ok ? summary(button.dataset.action, result) : `Could not complete: ${result.error}`;
+  const r = await chrome.runtime.sendMessage({ type: "organize-all" });
+  status.textContent = r.ok
+    ? `Merged ${r.windows} windows, removed ${r.removed} duplicates, organized ${r.tabs} tabs, and collapsed ${r.collapsed} groups.`
+    : `Could not complete: ${r.error}`;
+});
+document.querySelectorAll("[data-open]").forEach((button) => button.addEventListener("click", async () => {
+  await chrome.tabs.create({ url: chrome.runtime.getURL(`dashboard.html#${button.dataset.open}`) });
+  window.close();
 }));
-function summary(action, r) {
-  return ({ "organize-all":`Merged ${r.windows} windows, removed ${r.removed} duplicates, organized ${r.tabs} tabs, and collapsed ${r.collapsed} groups.`, organize:`Organized ${r.tabs} tabs into ${r.groups} groups.`, dedupe:`Removed ${r.removed} duplicate tabs.`, merge:`Merged ${r.windows} windows and moved ${r.moved} tabs.`, "save-tabs":`Library now has ${r.saved} tabs.`, "save-session":"Session saved.", collapse:`Collapsed ${r.collapsed} groups.` })[action] || "Done.";
-}
 chrome.runtime.sendMessage({ type:"focus-status" }).then((result) => {
   if (!result.ok) return;
   focusStatus.textContent = !result.enabled

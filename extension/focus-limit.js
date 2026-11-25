@@ -35,7 +35,7 @@ async function act(type, extra = {}) {
   try {
     const response = await send(type, extra);
     if (type === "save-focus-block") {
-      status.textContent = `Saved. Your library now has ${response.saved} tabs.`;
+      status.textContent = "Saved to Sessions.";
       document.querySelectorAll("button").forEach((button) => button.disabled = true);
     }
   } catch (error) {

@@ -320,41 +320,16 @@ async function restoreSessionWindow(id, index) {
   return { windows: (await restoreWindow(savedWindow, true)) ? 1 : 0 };
 }
 
-async function saveTabs(tabIds) {
-  const tabs = tabIds?.length ? await Promise.all(tabIds.map((id) => chrome.tabs.get(id))) : await chrome.tabs.query({ currentWindow: true });
-  const cfg = await settings();
-  const { library = [] } = await chrome.storage.local.get("library");
-  const byUrl = new Map(library.filter((item) => isWebUrl(item.url)).map((item) => [canonicalUrl(item.url, cfg.stripTracking), item]));
-  for (const tab of tabs.filter((t) => isWebUrl(t.url))) {
-    const key = canonicalUrl(tab.url, cfg.stripTracking);
-    const prior = byUrl.get(key);
-    byUrl.set(key, {
-      id: prior?.id || crypto.randomUUID(), url: tab.url, title: tab.title || tab.url,
-      domain: groupLabel(tab.url, "domain"), savedAt: Date.now()
-    });
-  }
-  const result = [...byUrl.values()].sort((a, b) =>
-    (a.title || a.url).localeCompare(b.title || b.url) || a.url.localeCompare(b.url)
-  );
-  await chrome.storage.local.set({ library: result });
-  return { saved: result.length };
-}
-
+// "Save for later" on the focus page keeps the blocked URL as a one-tab session.
 async function saveFocusBlock(block) {
-  const cfg = await settings();
-  const { library = [] } = await chrome.storage.local.get("library");
-  const key = canonicalUrl(block.url, cfg.stripTracking);
-  const byUrl = new Map(library.filter((item) => isWebUrl(item.url)).map((item) => [canonicalUrl(item.url, cfg.stripTracking), item]));
-  const prior = byUrl.get(key);
-  byUrl.set(key, {
-    id: prior?.id || crypto.randomUUID(), url: block.url, title: block.title || block.url,
-    domain: groupLabel(block.url, "domain"), savedAt: Date.now()
-  });
-  const result = [...byUrl.values()].sort((a, b) =>
-    (a.title || a.url).localeCompare(b.title || b.url) || a.url.localeCompare(b.url)
-  );
-  await chrome.storage.local.set({ library: result });
-  return { saved: result.length };
+  const tab = await chrome.tabs.get(block.tabId).catch(() => null);
+  const session = {
+    id: crypto.randomUUID(), name: `Saved for later: ${block.domain}`, createdAt: Date.now(),
+    windows: [{ incognito: Boolean(tab?.incognito), tabs: [{ url: block.url, title: block.title || block.url, pinned: false, muted: false, group: null }] }]
+  };
+  const { sessions = [] } = await chrome.storage.local.get("sessions");
+  await chrome.storage.local.set({ sessions: [session, ...sessions] });
+  return { saved: true };
 }
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
@@ -366,7 +341,6 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       case "dedupe": return dedupeWindow(message.windowId || current);
       case "merge": return mergeWindows(message.windowId || current);
       case "collapse": return collapseInactiveGroups();
-      case "save-tabs": return saveTabs(message.tabIds);
       case "save-session": return saveCurrentSession(message.name);
       case "restore-session": return restoreSession(message.id);
       case "restore-window": return restoreSessionWindow(message.id, message.index);
@@ -399,10 +373,6 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         if (sender.tab?.id) await chrome.tabs.remove(sender.tab.id);
         return { closed:true };
       });
-      case "delete-library": {
-        const { library = [] } = await chrome.storage.local.get("library");
-        await chrome.storage.local.set({ library: library.filter((x) => x.id !== message.id) }); return { deleted: 1 };
-      }
       case "delete-session": {
         const { sessions = [] } = await chrome.storage.local.get("sessions");
         await chrome.storage.local.set({ sessions: sessions.filter((x) => x.id !== message.id) }); return { deleted: 1 };

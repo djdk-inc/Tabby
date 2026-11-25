@@ -7,12 +7,11 @@ Tabby is a local-first Manifest V3 Chrome extension that consolidates the reques
 - Organizes existing and newly navigated web tabs into native Chrome groups by domain or full subdomain.
 - Orders native groups alphabetically and gives them stable Chrome colors.
 - Uses compact symbols for recognized sites (for example `𝕏` instead of `x.com`) and falls back to the domain name.
-- Runs merge windows, URL deduplication, grouping/sorting, and inactive-group collapse together through **Organize now**.
+- Runs merge windows, URL deduplication, grouping/sorting, and inactive-group collapse together through **Organize**.
 - Collapses groups after a configurable inactive period and reopens the active group.
 - Collapses the group you leave immediately and expands the group you enter (default on).
 - Removes duplicate URLs, optionally ignoring fragments and common tracking parameters.
 - Never automatically closes or regroups a pinned or currently audible tab when protection is enabled.
-- Saves a canonical-URL-deduplicated local library and shows it as one simple alphabetical list.
 - Saves and restores multi-window sessions, including pinned, muted, and incognito state; each window reopens in the mode it was saved in.
 - Shows sessions as compact rows that expand into windows and their URLs; any single window can be reopened on its own.
 - Exports all saved sessions as JSON or flat CSV from the Sessions screen.
@@ -21,33 +20,33 @@ Tabby is a local-first Manifest V3 Chrome extension that consolidates the reques
 - Limits configured domains to 3 regular tabs across all normal Chrome windows during configurable local-time focus hours and weekdays.
 - Replaces a fourth limited tab with a decision page that preserves the requested URL and offers existing-tab focus, save-for-later, explicit bypass, or close actions.
 - Treats protected pinned and audible tabs as focus-limit exceptions.
-- Stores all settings, saved tabs, and sessions locally in `chrome.storage.local`.
+- Stores all settings and sessions locally in `chrome.storage.local`.
 - Keeps a local log of unexpected errors and saves it to your downloads folder as `tabby_errors.json` (repeats are counted, not duplicated; the log resets on each update). Nothing is sent anywhere; the `downloads` permission exists only for this file.
 
 ## Install in Chrome
 
-1. Unzip `tabby-1.2.1.zip`.
+1. Unzip `tabby-2.0.0.zip`.
 2. Open `chrome://extensions`.
 3. Turn on **Developer mode**.
 4. Click **Load unpacked**.
-5. Select the unzipped `tabby-1.2.1` folder—the folder containing `manifest.json`.
+5. Select the unzipped `tabby-2.0.0` folder—the folder containing `manifest.json`.
 6. Pin **Tabby** from Chrome's Extensions menu if you want one-click access.
 
 Chrome may show a warning for developer-mode extensions after a restart. This build is intentionally unpacked and has not been submitted to the Chrome Web Store.
 
 Keyboard shortcuts on macOS:
 
-- `Command+Shift+X`: run the complete **Organize now** workflow
+- `Command+Shift+X`: run the complete **Organize** workflow
 
 Keyboard shortcuts on Windows/Linux:
 
-- `Ctrl+Shift+X`: run the complete **Organize now** workflow
+- `Ctrl+Shift+X`: run the complete **Organize** workflow
 
 Chrome can leave a suggested shortcut unassigned when it conflicts with the browser or another extension. Verify or change the active binding at `chrome://extensions/shortcuts`.
 
 ## Use
 
-The toolbar popup exposes the common actions. Open **Library, sessions & settings** for saved tabs, session restore, and configuration.
+The toolbar popup has three buttons: **Organize** (merge windows, remove duplicates, group and sort, collapse inactive groups), **Sessions** (save, browse, and restore sessions), and **Settings**. The focus decision page's **Save for later** stores the URL as a one-tab session.
 
 Focus tab limits are off until enabled. In Settings, choose local start and end times, active weekdays, and one limited domain per line. Equal start and end times mean all day on the selected days; overnight ranges continue into the next morning. Subdomains count under the configured parent domain. Limits apply only to new navigations while the schedule is active, so enabling a schedule never retroactively closes existing tabs.
 
