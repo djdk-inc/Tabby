@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   canonicalUrl, groupLabel, groupTitle, chooseDuplicateKeeper, isFocusScheduleActive,
-  normalizeFocusDomains, restrictedDomainForUrl
+  mergePlan, normalizeFocusDomains, restrictedDomainForUrl
 } from "../extension/core.js";
 import { sessionsToCsv, sessionsToJson } from "../extension/export.js";
 import fs from "node:fs";
@@ -53,4 +53,12 @@ test("focus domains normalize safely and include subdomains", () => {
   assert.deepEqual(normalizeFocusDomains("www.Reddit.com\nhttps://youtube.com/watch\nreddit.com"), ["reddit.com", "youtube.com"]);
   assert.equal(restrictedDomainForUrl("https://old.reddit.com/r/test", ["reddit.com"]), "reddit.com");
   assert.equal(restrictedDomainForUrl("https://notreddit.com/", ["reddit.com"]), null);
+});
+
+test("merge plan merges like with like: regular into regular, incognito into incognito", () => {
+  const windows = [{ id: 1, incognito: false }, { id: 2, incognito: false }, { id: 3, incognito: true }, { id: 4, incognito: true }, { id: 5 }];
+  const ids = (plan) => plan.map((p) => [p.targetId, p.sources.map((w) => w.id)]);
+  assert.deepEqual(ids(mergePlan(windows, windows[1])), [[2, [1, 5]], [3, [4]]]);
+  assert.deepEqual(ids(mergePlan(windows, windows[3])), [[4, [3]], [1, [2, 5]]]);
+  assert.deepEqual(ids(mergePlan([{ id: 1 }, { id: 2, incognito: true }], { id: 1 })), []);
 });

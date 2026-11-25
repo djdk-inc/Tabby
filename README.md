@@ -13,9 +13,10 @@ Tabby is a local-first Manifest V3 Chrome extension that consolidates the reques
 - Removes duplicate URLs, optionally ignoring fragments and common tracking parameters.
 - Never automatically closes or regroups a pinned or currently audible tab when protection is enabled.
 - Saves a canonical-URL-deduplicated local library and shows it as one simple alphabetical list.
-- Saves and restores multi-window sessions, including pinned and muted state.
+- Saves and restores multi-window sessions, including pinned, muted, and incognito state; each window reopens in the mode it was saved in.
+- Shows sessions as compact rows that expand into windows and their URLs; any single window can be reopened on its own.
 - Exports all saved sessions as JSON or flat CSV from the Sessions screen.
-- Consolidates normal windows into the current window and preserves pinned tabs.
+- Consolidates windows like with like: regular windows merge into the current window and incognito windows merge into one incognito window (Chrome cannot move tabs between the two). Pinned tabs stay pinned.
 - Coalesces same-domain groups from merged windows into one native group.
 - Limits configured domains to 3 regular tabs across all normal Chrome windows during configurable local-time focus hours and weekdays.
 - Replaces a fourth limited tab with a decision page that preserves the requested URL and offers existing-tab focus, save-for-later, explicit bypass, or close actions.
@@ -24,11 +25,11 @@ Tabby is a local-first Manifest V3 Chrome extension that consolidates the reques
 
 ## Install in Chrome
 
-1. Unzip `tabby-1.1.1.zip`.
+1. Unzip `tabby-1.1.2.zip`.
 2. Open `chrome://extensions`.
 3. Turn on **Developer mode**.
 4. Click **Load unpacked**.
-5. Select the unzipped `tabby-1.1.1` folder—the folder containing `manifest.json`.
+5. Select the unzipped `tabby-1.1.2` folder—the folder containing `manifest.json`.
 6. Pin **Tabby** from Chrome's Extensions menu if you want one-click access.
 
 Chrome may show a warning for developer-mode extensions after a restart. This build is intentionally unpacked and has not been submitted to the Chrome Web Store.
@@ -62,6 +63,8 @@ npm run test:unit
 npm run test:e2e
 ```
 
-The E2E suite launches an isolated, headed Chromium profile with the real unpacked extension. It does not mock `chrome.tabs`, `chrome.tabGroups`, `chrome.windows`, or `chrome.storage`. Current Chromium headless mode does not reliably initialize unpacked MV3 service workers, so the suite intentionally uses a real browser window.
+The E2E suite launches an isolated Chromium profile with the real unpacked extension. It does not mock `chrome.tabs`, `chrome.tabGroups`, `chrome.windows`, or `chrome.storage`. It runs in Chromium's new headless mode (`channel: "chromium"`), which loads MV3 extensions without opening windows; set `TABBY_HEADED=1` to watch it, which also runs the audible-tab test (headless Chromium has no audio output).
+
+Restoring incognito windows requires **Allow in Incognito** on Tabby's details page at `chrome://extensions`.
 
 See `TEST_REPORT.md` for the observed results and limitations.
