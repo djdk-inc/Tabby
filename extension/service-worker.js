@@ -180,7 +180,9 @@ async function organizeWindow(windowId) {
       const [label, tabIds] = sorted[i];
       const prior = existing.get(label);
       await unlessStripChanged(async () => {
-        const groupId = await chrome.tabs.group(prior ? { tabIds, groupId: prior.id } : { tabIds });
+        // Without createProperties.windowId Chrome creates the group in the focused window and moves the
+        // tabs there (across profiles that throws "Tabs can only be moved between windows in the same profile").
+        const groupId = await chrome.tabs.group(prior ? { tabIds, groupId: prior.id } : { tabIds, createProperties: { windowId } });
         await chrome.tabGroups.update(groupId, { title: label, color: COLORS[i % COLORS.length] });
       });
     }

@@ -141,6 +141,22 @@ test("Saved tab lists each URL once, alphabetically, filterable by incognito", a
   await page.close();
 });
 
+test("organizing a background window keeps its tabs in that window", async () => {
+  const page = await context.newPage(); await page.goto(`chrome-extension://${extensionId}/dashboard.html`);
+  const result = await page.evaluate(async (origin) => {
+    const background = await chrome.windows.create({ url: [`${origin}/a?bgwin=1`, `${origin}/b?bgwin=2`], focused: false });
+    const front = await chrome.windows.create({ url: "about:blank", focused: true });
+    await new Promise((r) => setTimeout(r, 800));
+    await chrome.runtime.sendMessage({ type: "organize", windowId: background.id });
+    const tabs = await chrome.tabs.query({});
+    const moved = tabs.filter((t) => t.url.includes("bgwin=") && t.windowId !== background.id).length;
+    await chrome.windows.remove(front.id); await chrome.windows.remove(background.id).catch(() => {});
+    return { moved };
+  }, origin);
+  await page.close();
+  expect(result.moved).toBe(0);
+});
+
 test("saves and restores sessions", async () => {
   const seed = await context.newPage(); await seed.goto(`${origin}/a?session=1`);
   await rpc("save-session", { name:"E2E Session" });
