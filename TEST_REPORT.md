@@ -1,9 +1,9 @@
 # Tabby verification report
 
-Date: 2026-11-04
+Date: 2026-11-24
 Host: macOS (Apple Silicon)
 Browser: Playwright Chromium 156.0.8078.80, isolated persistent contexts
-Extension: Tabby 1.1.1, Manifest V3
+Extension: Tabby 1.1.2, Manifest V3
 
 ## Acceptance method
 
@@ -32,6 +32,8 @@ The automated acceptance suite loaded the actual unpacked extension with `--load
 | Inactive group collapse | Verified | An inactive native group collapsed through the extension action. |
 | Collapse on leave / expand on enter | Verified | Activating a tab in another native group immediately collapsed the prior group and expanded the destination group. |
 | Window consolidation | Verified | A second normal window was merged into the target and its pinned tab remained pinned. |
+| Like-with-like merge (1.1.2) | Verified (unit) | `mergePlan` sends regular windows to the target and incognito windows to one incognito window. Automation cannot grant incognito access, so a live incognito merge is checked by hand. |
+| Nested session view (1.1.2) | Verified | Dashboard sessions expand to windows and URLs only; an incognito window shows a badge; per-window **Open** created exactly one window; opening an incognito window without incognito access showed a clear error and created nothing. |
 | Cross-window group coalescing | Verified | Same-domain tabs from different windows ended in one native group after consolidation. |
 | Settings persistence | Verified | A dashboard UI change persisted through `chrome.storage.local`. |
 | Configurable focus hours | Verified | Real Settings controls persisted enablement, local start time, weekdays, and normalized domain entries. |
@@ -41,7 +43,7 @@ The automated acceptance suite loaded the actual unpacked extension with `--load
 | Explicit bypass and exceptions | Verified | **Open anyway** restored the fourth URL in the same tab; a pinned tab and an inactive schedule bypassed the gate. |
 | Non-regression | Verified | Grouping, compact labels, deduplication, pinned/audible protection, sessions, exports, collapse, and window merge tests remained green. |
 
-Final automated result: **9/9 feature/unit tests and 15/15 real-browser E2E tests passed**. A separate headed Playwright exercise also passed the fourth-tab, cross-window, explicit-bypass, pinned-exception, and schedule-boundary scenarios. Current acceptance runs use a unique profile and headed Playwright Chromium.
+Final automated result (1.1.2): **10/10 feature/unit tests and 15/15 real-browser E2E tests passed in new headless Chromium against the extracted install ZIP; the audible-tab test is skipped headless and passes headed**. A separate headed Playwright exercise also passed the fourth-tab, cross-window, explicit-bypass, pinned-exception, and schedule-boundary scenarios. Current acceptance runs use a unique profile and headed Playwright Chromium.
 
 ## Original-extension inspection
 
