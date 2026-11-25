@@ -74,9 +74,10 @@ test("groups are in order only when alphabetical, contiguous, and before ungroup
   assert.equal(groupsInOrder(strip(1, 2, 1), title), false);
 });
 
-test("old untouched focus defaults move to on/all-day/every-day; customized ones are kept", () => {
+test("old default 9-5 weekday schedule moves to on/all-day/every-day; customized ones are kept", () => {
   const old = { focusLimitEnabled: false, focusStart: "09:00", focusEnd: "17:00", focusDays: [1, 2, 3, 4, 5], groupingMode: "subdomain" };
   assert.deepEqual(upgradeFocusDefaults(old), { ...old, focusLimitEnabled: true, focusStart: "00:00", focusEnd: "00:00", focusDays: [0, 1, 2, 3, 4, 5, 6] });
+  assert.deepEqual(upgradeFocusDefaults({ ...old, focusLimitEnabled: true }), { ...old, focusLimitEnabled: true, focusStart: "00:00", focusEnd: "00:00", focusDays: [0, 1, 2, 3, 4, 5, 6] });
   const custom = { ...old, focusEnd: "18:00" };
   assert.equal(upgradeFocusDefaults(custom), custom);
   assert.equal(upgradeFocusDefaults(undefined), undefined);

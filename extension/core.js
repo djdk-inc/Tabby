@@ -18,15 +18,15 @@ export const DEFAULTS = {
 
 export const FOCUS_TAB_LIMIT = 3;
 
-// Before 2.1.0 focus limits defaulted to off, 09:00–17:00, weekdays. Saved settings that still
-// match that exactly were never chosen, so they move to the current defaults; any change is kept.
+// Before 2.1.0 focus limits defaulted to off, 09:00–17:00, weekdays. A schedule still equal to that
+// old default was never chosen, so it becomes all day, every day; if the switch was also untouched
+// (off), focus turns on. Any customized schedule or an explicit "off" with a custom schedule is kept.
 export function upgradeFocusDefaults(settings) {
   if (!settings) return settings;
-  const untouched = settings.focusLimitEnabled === false && settings.focusStart === "09:00" && settings.focusEnd === "17:00" &&
-    JSON.stringify(settings.focusDays) === "[1,2,3,4,5]";
-  if (!untouched) return settings;
+  const oldSchedule = settings.focusStart === "09:00" && settings.focusEnd === "17:00" && JSON.stringify(settings.focusDays) === "[1,2,3,4,5]";
+  if (!oldSchedule) return settings;
   const { focusLimitEnabled, focusStart, focusEnd, focusDays } = DEFAULTS;
-  return { ...settings, focusLimitEnabled, focusStart, focusEnd, focusDays };
+  return { ...settings, focusStart, focusEnd, focusDays, focusLimitEnabled: settings.focusLimitEnabled || focusLimitEnabled };
 }
 
 const MULTIPART_SUFFIXES = new Set(["co.uk", "org.uk", "com.au", "co.jp", "co.nz", "com.br"]);

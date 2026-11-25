@@ -354,3 +354,34 @@ test("focus settings persist through the dashboard controls", async () => {
   expect(stored.settings.focusDomains).toEqual(["reddit.com", "youtube.com"]);
   await page.close();
 });
+
+test("updating over an enabled 9-5 weekday schedule makes it all day, and a 4th tab is redirected", async () => {
+  // Mirrors a real update: old version installed with saved settings, folder replaced, Chrome restarted.
+  const work = fs.mkdtempSync(path.resolve("work/upgrade-"));
+  const extDir = path.join(work, "ext"); fs.cpSync(extensionPath, extDir, { recursive: true });
+  const manifestPath = path.join(extDir, "manifest.json"); const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8"));
+  const launch = () => chromium.launchPersistentContext(path.join(work, "profile"), {
+    channel: "chromium", headless: process.env.TABBY_HEADED !== "1",
+    args: [`--disable-extensions-except=${extDir}`, `--load-extension=${extDir}`, "--no-first-run", "--no-default-browser-check"]
+  });
+  const idOf = async (ctx) => new URL((ctx.serviceWorkers()[0] || await ctx.waitForEvent("serviceworker")).url()).host;
+  fs.writeFileSync(manifestPath, JSON.stringify({ ...manifest, version: "2.0.0" }));
+  let ctx = await launch(); let id = await idOf(ctx);
+  let page = await ctx.newPage(); await page.goto(`chrome-extension://${id}/dashboard.html`);
+  // Storage as a pre-2.1.1 install leaves it: user's settings saved, no migration marker.
+  await page.evaluate(async (o) => {
+    await chrome.storage.local.remove("migrations");
+    await chrome.storage.local.set({ settings: { focusLimitEnabled: true, focusStart: "09:00", focusEnd: "17:00", focusDays: [1, 2, 3, 4, 5], focusDomains: [o], dedupeOnNavigate: false } });
+  }, new URL(origin).hostname);
+  await ctx.close();
+  fs.writeFileSync(manifestPath, JSON.stringify(manifest));
+  ctx = await launch(); id = await idOf(ctx);
+  page = await ctx.newPage(); await page.goto(`chrome-extension://${id}/dashboard.html`);
+  await expect.poll(async () => { const { settings } = await page.evaluate(() => chrome.storage.local.get("settings")); return [settings.focusLimitEnabled, settings.focusStart, settings.focusEnd, settings.focusDays.length]; }, { timeout: 10000 })
+    .toEqual([true, "00:00", "00:00", 7]);
+  for (let i = 1; i <= 4; i++) { const t = await ctx.newPage(); await t.goto(`${origin}/a?upgrade=${i}`).catch(() => {}); }
+  await expect.poll(async () => (await page.evaluate(() => chrome.tabs.query({}))).filter((t) => t.url.includes("focus-limit.html")).length).toBe(1);
+  const popup = await ctx.newPage(); await popup.goto(`chrome-extension://${id}/popup.html`);
+  await expect(popup.locator("#focusStatus")).toContainText("Focus hours are active");
+  await ctx.close(); fs.rmSync(work, { recursive: true, force: true });
+});

@@ -20,5 +20,10 @@ chrome.runtime.sendMessage({ type:"focus-status" }).then((result) => {
     ? "Focus tab limits are off. Configure them in Settings."
     : result.active
       ? `Focus hours are active: up to ${result.limit} tabs per limited domain across all windows.`
-      : `Focus tab limits are scheduled for ${result.start}–${result.end} local time.`;
+      : `Focus limits are on but not active right now (${scheduleText(result)}). Change hours in Settings.`;
 });
+function scheduleText({ start, end, days }) {
+  const names = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+  const dayText = days.length === 7 ? "every day" : days.length ? days.map((d) => names[d]).join(", ") : "no days";
+  return `${start === end ? "all day" : `${start}–${end}`}, ${dayText}`;
+}

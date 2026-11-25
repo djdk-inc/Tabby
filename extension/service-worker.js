@@ -82,13 +82,13 @@ async function updateFocusBlock(token, updater) {
 }
 
 chrome.runtime.onInstalled.addListener(initialize);
-chrome.runtime.onInstalled.addListener(({ reason }) => {
-  if (reason !== "update") return;
-  inBackground(chrome.storage.local.get("settings").then(({ settings }) => {
-    const upgraded = upgradeFocusDefaults(settings);
-    if (upgraded !== settings) return chrome.storage.local.set({ settings: upgraded });
-  }));
-});
+// One-time settings migration, run whenever the worker starts until it has run once. Not tied to
+// onInstalled, which Chrome does not fire for every way an unpacked folder gets updated.
+inBackground(chrome.storage.local.get(["settings", "migrations"]).then(({ settings, migrations = {} }) => {
+  if (migrations.focusDefaults21) return;
+  const upgraded = upgradeFocusDefaults(settings);
+  return chrome.storage.local.set({ ...(upgraded !== settings ? { settings: upgraded } : {}), migrations: { ...migrations, focusDefaults21: true } });
+}));
 chrome.runtime.onStartup.addListener(initialize);
 
 // Tabs and groups can change while Tabby works (user closes a tab, a duplicate is removed,
