@@ -443,7 +443,14 @@ chrome.tabs.onActivated.addListener((info) => {
   next.finally(() => { if (activationQueues.get(info.windowId) === next) activationQueues.delete(info.windowId); });
 });
 chrome.alarms.onAlarm.addListener((alarm) => { if (alarm.name === "inactive-collapse") inBackground(unlessStripChanged(collapseInactiveGroups)); });
+// Brief ✓ on the toolbar icon so a keyboard save is visible.
+async function flashSaved() {
+  await chrome.action.setBadgeBackgroundColor({ color: "#2e7d32" });
+  await chrome.action.setBadgeText({ text: "✓" });
+  setTimeout(() => chrome.action.setBadgeText({ text: "" }), 2000);
+}
+
 chrome.commands.onCommand.addListener((command) => inBackground((async () => {
-  const win = await chrome.windows.getCurrent();
-  if (command === "organize-tabs") await organizeEverything(win.id);
+  if (command === "organize-tabs") await organizeEverything((await chrome.windows.getCurrent()).id);
+  if (command === "save-session") { await saveCurrentSession(); await flashSaved(); }
 })()));

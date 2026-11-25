@@ -112,6 +112,16 @@ test("protects a genuinely audible duplicate tab", async () => {
   const after = await api("tabs", { windowId:audibleTab.windowId }); expect(after.some((t) => t.id === audibleTab.id && t.audible)).toBe(true); expect(after.some((t) => t.id === duplicateTab.id)).toBe(false);
 });
 
+test("Chrome assigns the organize and save-session keyboard shortcuts", async () => {
+  const page = await context.newPage(); await page.goto(`chrome-extension://${extensionId}/dashboard.html`);
+  const commands = await page.evaluate(() => chrome.commands.getAll());
+  const keys = Object.fromEntries(commands.map((c) => [c.name, c.shortcut]));
+  const mac = process.platform === "darwin";
+  expect(keys["save-session"]).toBe(mac ? "⇧⌘S" : "Ctrl+Shift+S");
+  expect(keys["organize-tabs"]).toBe(mac ? "⇧⌘X" : "Ctrl+Shift+X");
+  await page.close();
+});
+
 test("saves and restores sessions", async () => {
   const seed = await context.newPage(); await seed.goto(`${origin}/a?session=1`);
   await rpc("save-session", { name:"E2E Session" });
