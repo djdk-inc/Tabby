@@ -32,10 +32,9 @@ async function render() {
   document.querySelectorAll("[data-focus-day]").forEach((el) => { el.checked = cfg.focusDays.includes(Number(el.dataset.focusDay)); });
 }
 function plural(n, word) { return `${n} ${word}${n === 1 ? "" : "s"}`; }
-function hostOf(url) { try { return new URL(url).host; } catch { return ""; } }
 function showSessionError(err) { $("#sessionStatus").textContent = err.message; }
 function windowHtml(sessionId, w, i) {
-  const urls = w.tabs.map((t) => `<li><a href="${esc(t.url)}" data-session-url data-incognito="${Boolean(w.incognito)}" title="${esc(t.url)}">${esc(t.title || t.url)}</a><span class="muted">${esc(hostOf(t.url))}</span></li>`).join("");
+  const urls = w.tabs.map((t) => `<li><a href="${esc(t.url)}" data-session-url data-incognito="${Boolean(w.incognito)}" title="${esc(t.title || t.url)}">${esc(t.url)}</a></li>`).join("");
   return `<details class="window" data-key="${esc(sessionId)}:${i}"><summary><span class="caret"></span><span>Window ${i + 1}</span>${w.incognito ? `<span class="badge">Incognito</span>` : ""}<span class="muted">${plural(w.tabs.length, "tab")}</span><span class="spacer"></span><button class="small" data-restore-window="${esc(sessionId)}" data-index="${i}">Open</button></summary><ul class="url-list">${urls}</ul></details>`;
 }
 function sessionHtml(x) {

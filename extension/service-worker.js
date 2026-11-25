@@ -1,6 +1,6 @@
 import {
   DEFAULTS, FOCUS_TAB_LIMIT, canonicalUrl, chooseDuplicateKeeper, groupLabel, groupTitle,
-  isFocusScheduleActive, isProtected, isWebUrl, mergeSourceWindows, restrictedDomainForUrl
+  isFocusScheduleActive, isProtected, isWebUrl, mergePlan, restrictedDomainForUrl
 } from "./core.js";
 
 const COLORS = ["blue", "red", "yellow", "green", "pink", "purple", "cyan", "orange", "grey"];
@@ -159,24 +159,28 @@ async function collapseInactiveGroups() {
 
 async function mergeWindows(targetWindowId) {
   const target = await chrome.windows.get(targetWindowId);
-  const wins = mergeSourceWindows(await chrome.windows.getAll({ windowTypes: ["normal"], populate: true }), target);
-  let moved = 0;
-  for (const win of wins) {
-    const tabs = win.tabs || [];
-    const pinned = tabs.filter((t) => t.pinned);
-    const regular = tabs.filter((t) => !t.pinned);
-    for (const tab of pinned) {
-      await chrome.tabs.move(tab.id, { windowId: targetWindowId, index: -1 });
-      await chrome.tabs.update(tab.id, { pinned: true, muted: tab.mutedInfo?.muted });
-      moved++;
+  const plan = mergePlan(await chrome.windows.getAll({ windowTypes: ["normal"], populate: true }), target);
+  let moved = 0, windows = 0;
+  for (const { targetId, sources } of plan) {
+    for (const win of sources) {
+      const tabs = win.tabs || [];
+      const pinned = tabs.filter((t) => t.pinned);
+      const regular = tabs.filter((t) => !t.pinned);
+      for (const tab of pinned) {
+        await chrome.tabs.move(tab.id, { windowId: targetId, index: -1 });
+        await chrome.tabs.update(tab.id, { pinned: true, muted: tab.mutedInfo?.muted });
+        moved++;
+      }
+      if (regular.length) {
+        await chrome.tabs.move(regular.map((t) => t.id), { windowId: targetId, index: -1 });
+        moved += regular.length;
+      }
+      windows++;
     }
-    if (regular.length) {
-      await chrome.tabs.move(regular.map((t) => t.id), { windowId: targetWindowId, index: -1 });
-      moved += regular.length;
-    }
+    if (targetId !== targetWindowId) await organizeWindow(targetId);
   }
   await organizeWindow(targetWindowId);
-  return { windows: wins.length, moved };
+  return { windows, moved };
 }
 
 async function organizeEverything(windowId) {

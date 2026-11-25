@@ -35,9 +35,17 @@ const SITE_ICONS = new Map([
   ["facebook.com", "f"]
 ]);
 
-// Chrome cannot move tabs between incognito and regular windows, so merge only same-profile windows.
-export function mergeSourceWindows(windows, target) {
-  return windows.filter((w) => w.id !== target.id && Boolean(w.incognito) === Boolean(target.incognito));
+// Chrome cannot move tabs between incognito and regular windows, so merge like with like:
+// windows of the target's mode go into the target; the other mode goes into its first window.
+export function mergePlan(windows, target) {
+  const plan = [];
+  for (const incognito of [Boolean(target.incognito), !target.incognito]) {
+    const same = windows.filter((w) => Boolean(w.incognito) === incognito);
+    const into = incognito === Boolean(target.incognito) ? target : same[0];
+    const sources = same.filter((w) => w.id !== into?.id);
+    if (sources.length) plan.push({ targetId: into.id, sources });
+  }
+  return plan;
 }
 
 export function isWebUrl(url = "") {

@@ -139,15 +139,15 @@ test("sessions list nests windows and URLs and restores one window in its saved 
   const page = await context.newPage(); await page.goto(`chrome-extension://${extensionId}/dashboard.html`); await page.getByRole("button", { name:"Sessions" }).click();
   const card = page.locator("details.session").first();
   await expect(card.locator("summary").first()).toContainText("2 windows · 3 tabs");
-  await expect(card.getByText("Nested A")).toBeHidden();
+  await expect(card.getByText(`${origin}/a?nested=1`)).toBeHidden();
   await card.locator("summary").first().click();
   const win1 = card.locator("details.window").nth(0), win2 = card.locator("details.window").nth(1);
   await expect(win2).toContainText("Incognito");
-  await win1.locator("summary").click(); await expect(win1.getByText("Nested A")).toBeVisible(); await expect(win1.getByText("Nested B")).toBeVisible();
+  await win1.locator("summary").click(); await expect(win1.getByText(`${origin}/a?nested=1`)).toBeVisible(); await expect(win1.getByText(`${origin}/b?nested=2`)).toBeVisible(); await expect(win1.getByText("Nested A")).toHaveCount(0);
   const before = (await api("windows")).length;
   await win1.getByRole("button", { name:"Open" }).click();
   await expect.poll(async () => (await api("windows")).length).toBe(before + 1);
-  await expect(win1.getByText("Nested A")).toBeVisible(); // expansion survives re-render
+  await expect(win1.getByText(`${origin}/a?nested=1`)).toBeVisible(); // expansion survives re-render
   await win2.getByRole("button", { name:"Open" }).click();
   await expect(page.locator("#sessionStatus")).toContainText("Allow Tabby in Incognito");
   expect((await api("windows")).length).toBe(before + 1);
