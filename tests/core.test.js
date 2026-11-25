@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   canonicalUrl, groupLabel, groupTitle, chooseDuplicateKeeper, isFocusScheduleActive,
-  normalizeFocusDomains, restrictedDomainForUrl
+  mergeSourceWindows, normalizeFocusDomains, restrictedDomainForUrl
 } from "../extension/core.js";
 import { sessionsToCsv, sessionsToJson } from "../extension/export.js";
 import fs from "node:fs";
@@ -53,4 +53,10 @@ test("focus domains normalize safely and include subdomains", () => {
   assert.deepEqual(normalizeFocusDomains("www.Reddit.com\nhttps://youtube.com/watch\nreddit.com"), ["reddit.com", "youtube.com"]);
   assert.equal(restrictedDomainForUrl("https://old.reddit.com/r/test", ["reddit.com"]), "reddit.com");
   assert.equal(restrictedDomainForUrl("https://notreddit.com/", ["reddit.com"]), null);
+});
+
+test("merge sources skip the target and windows from the other profile", () => {
+  const windows = [{ id: 1, incognito: false }, { id: 2, incognito: false }, { id: 3, incognito: true }, { id: 4, incognito: true }];
+  assert.deepEqual(mergeSourceWindows(windows, windows[0]).map((w) => w.id), [2]);
+  assert.deepEqual(mergeSourceWindows(windows, windows[2]).map((w) => w.id), [4]);
 });

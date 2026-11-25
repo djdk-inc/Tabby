@@ -27,6 +27,7 @@ async function api(fn, arg) {
     if (fn === "updateTab") return chrome.tabs.update(arg.id, arg.props);
     if (fn === "removeTabs") return chrome.tabs.remove(arg);
     if (fn === "storage") return chrome.storage.local.get(arg);
+    if (fn === "setStorage") return chrome.storage.local.set(arg);
   }, [fn, arg]);
   await page.close(); return out;
 }
@@ -40,7 +41,8 @@ test.beforeAll(async () => {
   origin = `http://127.0.0.1:${server.address().port}`;
   profilePath = fs.mkdtempSync(path.resolve("work/e2e-profile-"));
   context = await chromium.launchPersistentContext(profilePath, {
-    headless: false,
+    // New headless mode (channel "chromium") loads MV3 extensions without opening windows; TABBY_HEADED=1 to watch.
+    channel: "chromium", headless: process.env.TABBY_HEADED !== "1",
     args: [`--disable-extensions-except=${extensionPath}`, `--load-extension=${extensionPath}`, "--no-first-run", "--no-default-browser-check"]
   });
   let workers = context.serviceWorkers();
@@ -92,6 +94,7 @@ test("deduplicates canonical URLs but protects pinned tabs", async () => {
 });
 
 test("protects a genuinely audible duplicate tab", async () => {
+  test.skip(process.env.TABBY_HEADED !== "1", "Headless Chromium has no audio output, so tabs never report audible; run with TABBY_HEADED=1.");
   const control = await context.newPage(); await control.goto(`chrome-extension://${extensionId}/dashboard.html`);
   await control.evaluate(async () => { const { settings = {} } = await chrome.storage.local.get("settings"); await chrome.storage.local.set({ settings:{ ...settings, autoOrganize:false, dedupeOnNavigate:false, protectAudible:true } }); }); await control.close();
   const audible = await context.newPage(); await audible.goto(`${origin}/audio`); await audible.getByRole("button", { name:"Play test tone" }).click();
@@ -125,6 +128,30 @@ test("deduplicates saved tabs and shows a flat alphabetical library", async () =
   const titles = await control.locator("#libraryList article strong").allTextContents(); expect(titles).toEqual([...titles].sort((a, b) => a.localeCompare(b))); expect(titles).toHaveLength(2);
   const stored = await control.evaluate(() => chrome.storage.local.get("library")); expect(stored.library).toHaveLength(2); expect(new Set(stored.library.map((x) => x.domain))).toEqual(new Set(["127.0.0.1", "example.com"]));
   await control.close();
+});
+
+test("sessions list nests windows and URLs and restores one window in its saved mode", async () => {
+  const session = { id:"nested-1", name:"Nested", createdAt:Date.now(), windows:[
+    { incognito:false, tabs:[{ url:`${origin}/a?nested=1`, title:"Nested A" }, { url:`${origin}/b?nested=2`, title:"Nested B" }] },
+    { incognito:true, tabs:[{ url:`${origin}/a?nested=3`, title:"Secret" }] }
+  ] };
+  await api("setStorage", { sessions:[session] });
+  const page = await context.newPage(); await page.goto(`chrome-extension://${extensionId}/dashboard.html`); await page.getByRole("button", { name:"Sessions" }).click();
+  const card = page.locator("details.session").first();
+  await expect(card.locator("summary").first()).toContainText("2 windows · 3 tabs");
+  await expect(card.getByText("Nested A")).toBeHidden();
+  await card.locator("summary").first().click();
+  const win1 = card.locator("details.window").nth(0), win2 = card.locator("details.window").nth(1);
+  await expect(win2).toContainText("Incognito");
+  await win1.locator("summary").click(); await expect(win1.getByText("Nested A")).toBeVisible(); await expect(win1.getByText("Nested B")).toBeVisible();
+  const before = (await api("windows")).length;
+  await win1.getByRole("button", { name:"Open" }).click();
+  await expect.poll(async () => (await api("windows")).length).toBe(before + 1);
+  await expect(win1.getByText("Nested A")).toBeVisible(); // expansion survives re-render
+  await win2.getByRole("button", { name:"Open" }).click();
+  await expect(page.locator("#sessionStatus")).toContainText("Allow Tabby in Incognito");
+  expect((await api("windows")).length).toBe(before + 1);
+  await page.close();
 });
 
 test("exports saved sessions to real JSON and CSV downloads", async () => {

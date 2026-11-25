@@ -9,17 +9,40 @@ $("#exportSessionsCsv").onclick = () => exportSessions("csv");
 async function render() {
   const data = await chrome.storage.local.get(["library", "sessions", "settings"]); const library = data.library || []; const sessions = data.sessions || [];
   $("#libraryList").innerHTML = library.length ? library.map((x) => `<article class="card row"><div><strong>${esc(x.title)}</strong><div class="url">${esc(x.url)}</div></div><div><button data-open="${esc(x.url)}">Open</button> <button class="danger" data-del-lib="${x.id}">Remove</button></div></article>`).join("") : `<div class="card muted">No saved tabs yet.</div>`;
-  $("#sessionList").innerHTML = sessions.length ? sessions.map((x) => `<article class="card row"><div><strong>${esc(x.name)}</strong><div class="muted">${x.windows.length} window(s) · ${new Date(x.createdAt).toLocaleString()}</div></div><div><button data-restore="${x.id}">Restore</button> <button class="danger" data-del-session="${x.id}">Remove</button></div></article>`).join("") : `<div class="card muted">No sessions yet.</div>`;
+  const openKeys = new Set([...document.querySelectorAll("#sessionList details[open]")].map((d) => d.dataset.key));
+  $("#sessionList").innerHTML = sessions.length ? sessions.map(sessionHtml).join("") : `<div class="card muted">No sessions yet.</div>`;
+  document.querySelectorAll("#sessionList details").forEach((d) => { d.open = openKeys.has(d.dataset.key); });
   document.querySelectorAll("[data-open]").forEach((b) => b.onclick = () => chrome.tabs.create({ url: b.dataset.open }));
   document.querySelectorAll("[data-del-lib]").forEach((b) => b.onclick = () => act("delete-library", { id:b.dataset.delLib }));
-  document.querySelectorAll("[data-restore]").forEach((b) => b.onclick = () => act("restore-session", { id:b.dataset.restore }));
-  document.querySelectorAll("[data-del-session]").forEach((b) => b.onclick = () => act("delete-session", { id:b.dataset.delSession }));
+  // Buttons sit inside <summary>; stop the click from also toggling the row.
+  const onButton = (sel, fn) => document.querySelectorAll(sel).forEach((b) => b.onclick = (e) => { e.preventDefault(); e.stopPropagation(); $("#sessionStatus").textContent = ""; fn(b.dataset).catch(showSessionError); });
+  onButton("[data-restore]", (d) => act("restore-session", { id:d.restore }));
+  onButton("[data-restore-window]", (d) => act("restore-window", { id:d.restoreWindow, index:Number(d.index) }));
+  onButton("[data-del-session]", (d) => act("delete-session", { id:d.delSession }));
+  document.querySelectorAll("[data-session-url]").forEach((a) => a.onclick = (e) => {
+    e.preventDefault();
+    const url = a.getAttribute("href");
+    (a.dataset.incognito === "true" ? chrome.windows.create({ url, incognito:true }) : chrome.tabs.create({ url })).catch(showSessionError);
+  });
   const cfg = { ...DEFAULTS, ...(data.settings || {}) };
   document.querySelectorAll("[data-setting]").forEach((el) => {
     const value = cfg[el.dataset.setting];
     el.type === "checkbox" ? el.checked = value : el.value = Array.isArray(value) ? value.join("\n") : value;
   });
   document.querySelectorAll("[data-focus-day]").forEach((el) => { el.checked = cfg.focusDays.includes(Number(el.dataset.focusDay)); });
+}
+function plural(n, word) { return `${n} ${word}${n === 1 ? "" : "s"}`; }
+function hostOf(url) { try { return new URL(url).host; } catch { return ""; } }
+function showSessionError(err) { $("#sessionStatus").textContent = err.message; }
+function windowHtml(sessionId, w, i) {
+  const urls = w.tabs.map((t) => `<li><a href="${esc(t.url)}" data-session-url data-incognito="${Boolean(w.incognito)}" title="${esc(t.url)}">${esc(t.title || t.url)}</a><span class="muted">${esc(hostOf(t.url))}</span></li>`).join("");
+  return `<details class="window" data-key="${esc(sessionId)}:${i}"><summary><span class="caret"></span><span>Window ${i + 1}</span>${w.incognito ? `<span class="badge">Incognito</span>` : ""}<span class="muted">${plural(w.tabs.length, "tab")}</span><span class="spacer"></span><button class="small" data-restore-window="${esc(sessionId)}" data-index="${i}">Open</button></summary><ul class="url-list">${urls}</ul></details>`;
+}
+function sessionHtml(x) {
+  const date = new Date(x.createdAt).toLocaleString();
+  const tabCount = x.windows.reduce((n, w) => n + w.tabs.length, 0);
+  const meta = [plural(x.windows.length, "window"), plural(tabCount, "tab"), x.name.includes(date) ? "" : date].filter(Boolean).join(" · ");
+  return `<details class="card session" data-key="${esc(x.id)}"><summary><span class="caret"></span><strong>${esc(x.name)}</strong><span class="muted">${meta}</span><span class="spacer"></span><button class="small" data-restore="${esc(x.id)}">Restore</button><button class="small danger" data-del-session="${esc(x.id)}">Remove</button></summary>${x.windows.map((w, i) => windowHtml(x.id, w, i)).join("")}</details>`;
 }
 async function exportSessions(format) {
   const { sessions = [] } = await chrome.storage.local.get("sessions");

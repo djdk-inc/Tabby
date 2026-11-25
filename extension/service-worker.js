@@ -1,6 +1,6 @@
 import {
   DEFAULTS, FOCUS_TAB_LIMIT, canonicalUrl, chooseDuplicateKeeper, groupLabel, groupTitle,
-  isFocusScheduleActive, isProtected, isWebUrl, restrictedDomainForUrl
+  isFocusScheduleActive, isProtected, isWebUrl, mergeSourceWindows, restrictedDomainForUrl
 } from "./core.js";
 
 const COLORS = ["blue", "red", "yellow", "green", "pink", "purple", "cyan", "orange", "grey"];
@@ -158,7 +158,8 @@ async function collapseInactiveGroups() {
 }
 
 async function mergeWindows(targetWindowId) {
-  const wins = (await chrome.windows.getAll({ windowTypes: ["normal"], populate: true })).filter((w) => w.id !== targetWindowId);
+  const target = await chrome.windows.get(targetWindowId);
+  const wins = mergeSourceWindows(await chrome.windows.getAll({ windowTypes: ["normal"], populate: true }), target);
   let moved = 0;
   for (const win of wins) {
     const tabs = win.tabs || [];
@@ -191,7 +192,7 @@ async function saveCurrentSession(name) {
   const groups = await chrome.tabGroups.query({});
   const session = {
     id: crypto.randomUUID(), name: name || `Session ${new Date().toLocaleString()}`, createdAt: Date.now(),
-    windows: windows.map((w) => ({ tabs: (w.tabs || []).filter((t) => isWebUrl(t.url)).map((t) => ({
+    windows: windows.map((w) => ({ incognito: w.incognito, tabs: (w.tabs || []).filter((t) => isWebUrl(t.url)).map((t) => ({
       url: t.url, title: t.title, pinned: t.pinned, muted: t.mutedInfo?.muted || false,
       group: groups.find((g) => g.id === t.groupId)?.title || null
     })) }))
@@ -201,21 +202,41 @@ async function saveCurrentSession(name) {
   return session;
 }
 
-async function restoreSession(id) {
+async function findSession(id) {
   const { sessions = [] } = await chrome.storage.local.get("sessions");
   const session = sessions.find((s) => s.id === id);
   if (!session) throw new Error("Session not found");
+  return session;
+}
+
+// Reopens a saved window in the mode it was saved in (incognito or regular).
+async function restoreWindow(savedWindow, focused) {
+  const urls = savedWindow.tabs.map((t) => t.url);
+  if (!urls.length) return null;
+  if (savedWindow.incognito && !(await chrome.extension.isAllowedIncognitoAccess())) {
+    throw new Error("Allow Tabby in Incognito (chrome://extensions → Tabby → Details) to restore incognito windows.");
+  }
+  const win = await chrome.windows.create({ url: urls, focused, incognito: Boolean(savedWindow.incognito) });
+  const tabs = await chrome.tabs.query({ windowId: win.id });
+  for (let i = 0; i < tabs.length; i++) await chrome.tabs.update(tabs[i].id, { pinned: savedWindow.tabs[i]?.pinned || false, muted: savedWindow.tabs[i]?.muted || false });
+  await organizeWindow(win.id);
+  return win.id;
+}
+
+async function restoreSession(id) {
+  const session = await findSession(id);
   const created = [];
   for (const [index, savedWindow] of session.windows.entries()) {
-    const urls = savedWindow.tabs.map((t) => t.url);
-    if (!urls.length) continue;
-    const win = await chrome.windows.create({ url: urls, focused: index === 0 });
-    const tabs = await chrome.tabs.query({ windowId: win.id });
-    for (let i = 0; i < tabs.length; i++) await chrome.tabs.update(tabs[i].id, { pinned: savedWindow.tabs[i]?.pinned || false, muted: savedWindow.tabs[i]?.muted || false });
-    await organizeWindow(win.id);
-    created.push(win.id);
+    const winId = await restoreWindow(savedWindow, index === 0);
+    if (winId) created.push(winId);
   }
   return { windows: created.length };
+}
+
+async function restoreSessionWindow(id, index) {
+  const savedWindow = (await findSession(id)).windows[index];
+  if (!savedWindow) throw new Error("Window not found");
+  return { windows: (await restoreWindow(savedWindow, true)) ? 1 : 0 };
 }
 
 async function saveTabs(tabIds) {
@@ -267,6 +288,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       case "save-tabs": return saveTabs(message.tabIds);
       case "save-session": return saveCurrentSession(message.name);
       case "restore-session": return restoreSession(message.id);
+      case "restore-window": return restoreSessionWindow(message.id, message.index);
       case "focus-status": return focusStatus();
       case "get-focus-block": {
         const { pendingFocusBlocks = {} } = await chrome.storage.session.get("pendingFocusBlocks");
