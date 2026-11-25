@@ -180,7 +180,8 @@ export function addToErrorLog(log, { message, source, stack = null, version }, n
 
 // Every URL saved in any session, once each (same canonical form as duplicate-tab removal),
 // sorted alphabetically. `incognito`/`regular` say which kinds of window it was saved from.
-// filter: "all" | "regular" | "incognito".
+// filter: "all" | "incognito" (saved from any incognito window) | "regular" (never saved from one),
+// so the two filters split the list with no overlap.
 export function savedUrls(sessions, filter = "all", stripTracking = true) {
   const byUrl = new Map();
   for (const session of sessions) for (const win of session.windows) for (const tab of win.tabs) {
@@ -191,6 +192,6 @@ export function savedUrls(sessions, filter = "all", stripTracking = true) {
     byUrl.set(url, entry);
   }
   return [...byUrl.values()]
-    .filter((e) => filter === "all" || e[filter])
+    .filter((e) => filter === "all" || (filter === "incognito" ? e.incognito : !e.incognito))
     .sort((a, b) => a.url.localeCompare(b.url));
 }

@@ -134,10 +134,11 @@ test("Saved tab lists each URL once, alphabetically, filterable by incognito", a
   await page.getByRole("button", { name:"Incognito" }).click();
   await expect.poll(urls).toEqual(["https://alpha.example/", "https://zeta.example/p"]);
   await page.getByRole("button", { name:"Regular" }).click();
-  await expect.poll(urls).toEqual(["https://mid.example/", "https://zeta.example/p"]);
+  await expect.poll(urls).toEqual(["https://mid.example/"]);
+  await expect(page.locator("#savedList .badge")).toHaveCount(0);
   const ready = page.waitForEvent("download"); await page.locator("#exportSavedCsv").click(); const download = await ready;
   expect(download.suggestedFilename()).toMatch(/^tabby-saved-regular-\d{4}-\d{2}-\d{2}\.csv$/);
-  expect(fs.readFileSync(await download.path(), "utf8").split("\n")).toEqual(["url,title,incognito,regular", "https://mid.example/,https://mid.example/,false,true", "https://zeta.example/p,https://zeta.example/p,true,true"]);
+  expect(fs.readFileSync(await download.path(), "utf8").split("\n")).toEqual(["url,title,incognito,regular", "https://mid.example/,https://mid.example/,false,true"]);
   await page.close();
 });
 
