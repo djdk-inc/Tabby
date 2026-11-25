@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   canonicalUrl, groupLabel, groupTitle, chooseDuplicateKeeper, isFocusScheduleActive,
-  addToErrorLog, mergePlan, normalizeFocusDomains, restrictedDomainForUrl
+  addToErrorLog, groupsInOrder, mergePlan, normalizeFocusDomains, restrictedDomainForUrl
 } from "../extension/core.js";
 import { sessionsToCsv } from "../extension/export.js";
 
@@ -63,4 +63,13 @@ test("error log merges repeats into one counted entry, newest first, capped", ()
   assert.deepEqual(log.map((e) => [e.message, e.count, e.firstSeen, e.lastSeen, e.version]), [["A", 2, "t1", "t3", "2"], ["B", 1, "t2", "t2", "1"]]);
   assert.equal(addToErrorLog(log, { message: "A", source: "page", version: "2" }, "t4").length, 3);
   assert.deepEqual(addToErrorLog(log, { message: "C", source: "bg" }, "t5", 2).map((e) => e.message), ["C", "A"]);
+});
+
+test("groups are in order only when alphabetical, contiguous, and before ungrouped tabs", () => {
+  const title = (id) => ({ 1: "a", 2: "b" })[id];
+  const strip = (...ids) => ids.map((g) => (g === "p" ? { pinned: true, groupId: -1 } : { groupId: g }));
+  assert.equal(groupsInOrder(strip("p", 1, 1, 2, -1), title), true);
+  assert.equal(groupsInOrder(strip(2, 1, -1), title), false);
+  assert.equal(groupsInOrder(strip(1, -1, 2), title), false);
+  assert.equal(groupsInOrder(strip(1, 2, 1), title), false);
 });

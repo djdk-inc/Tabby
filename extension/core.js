@@ -139,6 +139,21 @@ export function isFocusScheduleActive(now, start = "09:00", end = "17:00", days 
   return currentMinute < endMinute && enabledDays.has(previousDay);
 }
 
+// True when the strip already reads: pinned tabs, then every group in alphabetical order, then
+// ungrouped tabs. Tabs are in strip order; titleOf maps a groupId to its title.
+export function groupsInOrder(tabs, titleOf) {
+  const seen = []; let ungroupedSeen = false;
+  for (const tab of tabs) {
+    if (tab.pinned) continue;
+    if (tab.groupId < 0) { ungroupedSeen = true; continue; }
+    if (seen.at(-1) === tab.groupId) continue;
+    if (ungroupedSeen || seen.includes(tab.groupId)) return false;
+    seen.push(tab.groupId);
+  }
+  const titles = seen.map(titleOf);
+  return titles.every((title, i) => i === 0 || (titles[i - 1] || "").localeCompare(title || "") <= 0);
+}
+
 export const ERROR_LOG_LIMIT = 200;
 
 // Adds one error to the log: repeats of the same message from the same source become one

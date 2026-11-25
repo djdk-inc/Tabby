@@ -1,6 +1,6 @@
 import {
   DEFAULTS, FOCUS_TAB_LIMIT, canonicalUrl, chooseDuplicateKeeper, groupLabel, groupTitle,
-  addToErrorLog, isFocusScheduleActive, isProtected, isWebUrl, mergePlan, restrictedDomainForUrl
+  addToErrorLog, groupsInOrder, isFocusScheduleActive, isProtected, isWebUrl, mergePlan, restrictedDomainForUrl
 } from "./core.js";
 import { UserFacingError } from "./errors.js";
 
@@ -179,6 +179,9 @@ async function organizeWindow(windowId) {
     // Alphabetical order: move groups last-to-first to just after the pinned tabs. That spot is
     // always a group boundary, so no index is precomputed against a strip that may change.
     const groups = await chrome.tabGroups.query({ windowId });
+    const titleOf = new Map(groups.map((g) => [g.id, g.title]));
+    // Leave an already-sorted strip alone so repeated passes never visibly reshuffle tabs.
+    if (groupsInOrder(await chrome.tabs.query({ windowId }), (id) => titleOf.get(id))) return { groups: groups.length, tabs: [...buckets.values()].reduce((n, ids) => n + ids.length, 0) };
     groups.sort((a, b) => (b.title || "").localeCompare(a.title || ""));
     for (const group of groups) {
       await unlessStripChanged(async () => {
