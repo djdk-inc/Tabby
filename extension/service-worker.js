@@ -83,6 +83,21 @@ async function updateFocusBlock(token, updater) {
 chrome.runtime.onInstalled.addListener(initialize);
 chrome.runtime.onStartup.addListener(initialize);
 
+// Tabs and groups can change while Tabby works (user closes a tab, a duplicate is removed,
+// a link opens into a group). These Chrome errors mean "the strip moved under us"; the
+// next organize pass converges, so the step is skipped instead of failing the whole run.
+const TAB_STRIP_RACES = ["No tab with id", "No group with id", "No window with id", "in the middle of another group", "Tabs cannot be edited right now"];
+async function unlessStripChanged(step) {
+  try { return await step(); } catch (error) {
+    if (TAB_STRIP_RACES.some((text) => String(error?.message).includes(text))) return null;
+    throw error;
+  }
+}
+// Background listeners are best-effort; log instead of leaving uncaught rejections.
+function inBackground(promise) {
+  promise.catch((error) => console.warn("Tabby background task failed:", error?.message || error));
+}
+
 async function organizeWindow(windowId) {
   if (!windowId) return { groups: 0, tabs: 0 };
   if (organizing.has(windowId)) return organizing.get(windowId);
@@ -101,16 +116,20 @@ async function organizeWindow(windowId) {
     for (let i = 0; i < sorted.length; i++) {
       const [label, tabIds] = sorted[i];
       const prior = existing.get(label);
-      const groupId = await chrome.tabs.group(prior ? { tabIds, groupId: prior.id } : { tabIds });
-      await chrome.tabGroups.update(groupId, { title: label, color: COLORS[i % COLORS.length] });
+      await unlessStripChanged(async () => {
+        const groupId = await chrome.tabs.group(prior ? { tabIds, groupId: prior.id } : { tabIds });
+        await chrome.tabGroups.update(groupId, { title: label, color: COLORS[i % COLORS.length] });
+      });
     }
-    const pinnedCount = tabs.filter((tab) => tab.pinned).length;
+    // Alphabetical order: move groups last-to-first to just after the pinned tabs. That spot is
+    // always a group boundary, so no index is precomputed against a strip that may change.
     const groups = await chrome.tabGroups.query({ windowId });
-    groups.sort((a, b) => (a.title || "").localeCompare(b.title || ""));
-    let nextIndex = pinnedCount;
+    groups.sort((a, b) => (b.title || "").localeCompare(a.title || ""));
     for (const group of groups) {
-      await chrome.tabGroups.move(group.id, { index: nextIndex });
-      nextIndex += (await chrome.tabs.query({ groupId: group.id })).length;
+      await unlessStripChanged(async () => {
+        const pinned = (await chrome.tabs.query({ windowId, pinned: true })).length;
+        await chrome.tabGroups.move(group.id, { index: pinned });
+      });
     }
     return { groups: groups.length, tabs: [...buckets.values()].reduce((n, ids) => n + ids.length, 0) };
   })();
@@ -335,14 +354,17 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   return true;
 });
 
-chrome.tabs.onUpdated.addListener(async (tabId, change, tab) => {
+chrome.tabs.onUpdated.addListener((tabId, change, tab) => inBackground((async () => {
   if (!change.url && change.status !== "complete") return;
   if (change.url && (await queueFocusLimitCheck(tab)).blocked) return;
   const cfg = await settings();
-  if (cfg.dedupeOnNavigate && tab.windowId) await dedupeWindow(tab.windowId);
-  if (cfg.autoOrganize && tab.windowId) await organizeWindow(tab.windowId);
-});
-chrome.tabs.onCreated.addListener(async (tab) => { const cfg = await settings(); if (cfg.autoOrganize && tab.windowId) setTimeout(() => organizeWindow(tab.windowId), 600); });
+  if (cfg.dedupeOnNavigate && tab.windowId) await unlessStripChanged(() => dedupeWindow(tab.windowId));
+  if (cfg.autoOrganize && tab.windowId) await unlessStripChanged(() => organizeWindow(tab.windowId));
+})()));
+chrome.tabs.onCreated.addListener((tab) => inBackground((async () => {
+  const cfg = await settings();
+  if (cfg.autoOrganize && tab.windowId) setTimeout(() => inBackground(unlessStripChanged(() => organizeWindow(tab.windowId))), 600);
+})()));
 chrome.tabs.onRemoved.addListener((tabId) => {
   const cleanup = focusLimitQueue.then(async () => {
     const stored = await chrome.storage.session.get(["focusBypassTabs", "pendingFocusBlocks"]);
@@ -381,8 +403,8 @@ chrome.tabs.onActivated.addListener((info) => {
   activationQueues.set(info.windowId, next);
   next.finally(() => { if (activationQueues.get(info.windowId) === next) activationQueues.delete(info.windowId); });
 });
-chrome.alarms.onAlarm.addListener((alarm) => { if (alarm.name === "inactive-collapse") collapseInactiveGroups(); });
-chrome.commands.onCommand.addListener(async (command) => {
+chrome.alarms.onAlarm.addListener((alarm) => { if (alarm.name === "inactive-collapse") inBackground(unlessStripChanged(collapseInactiveGroups)); });
+chrome.commands.onCommand.addListener((command) => inBackground((async () => {
   const win = await chrome.windows.getCurrent();
   if (command === "organize-tabs") await organizeEverything(win.id);
-});
+})()));
