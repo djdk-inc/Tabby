@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   canonicalUrl, groupLabel, groupTitle, chooseDuplicateKeeper, isFocusScheduleActive,
-  mergePlan, normalizeFocusDomains, restrictedDomainForUrl
+  addToErrorLog, mergePlan, normalizeFocusDomains, restrictedDomainForUrl
 } from "../extension/core.js";
 import { sessionsToCsv } from "../extension/export.js";
 
@@ -53,4 +53,14 @@ test("merge plan merges like with like: regular into regular, incognito into inc
   assert.deepEqual(ids(mergePlan(windows, windows[1])), [[2, [1, 5]], [3, [4]]]);
   assert.deepEqual(ids(mergePlan(windows, windows[3])), [[4, [3]], [1, [2, 5]]]);
   assert.deepEqual(ids(mergePlan([{ id: 1 }, { id: 2, incognito: true }], { id: 1 })), []);
+});
+
+test("error log merges repeats into one counted entry, newest first, capped", () => {
+  let log = [];
+  log = addToErrorLog(log, { message: "A", source: "bg", version: "1" }, "t1");
+  log = addToErrorLog(log, { message: "B", source: "bg", version: "1" }, "t2");
+  log = addToErrorLog(log, { message: "A", source: "bg", version: "2" }, "t3");
+  assert.deepEqual(log.map((e) => [e.message, e.count, e.firstSeen, e.lastSeen, e.version]), [["A", 2, "t1", "t3", "2"], ["B", 1, "t2", "t2", "1"]]);
+  assert.equal(addToErrorLog(log, { message: "A", source: "page", version: "2" }, "t4").length, 3);
+  assert.deepEqual(addToErrorLog(log, { message: "C", source: "bg" }, "t5", 2).map((e) => e.message), ["C", "A"]);
 });

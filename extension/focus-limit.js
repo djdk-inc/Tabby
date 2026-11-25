@@ -1,3 +1,5 @@
+import { reportPageErrors } from "./errors.js";
+reportPageErrors("focus-limit");
 const token = location.hash.slice(1);
 const status = document.querySelector("#status");
 

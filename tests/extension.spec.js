@@ -238,6 +238,30 @@ test("organize survives arbitrary tab-strip layouts and concurrent tab changes",
   expect(errors).toEqual([]);
 });
 
+test("unexpected errors are written to tabby_errors.json; user-facing ones are not", async () => {
+  const page = await context.newPage(); await page.goto(`chrome-extension://${extensionId}/dashboard.html`);
+  const result = await page.evaluate(async () => {
+    const created = new Promise((resolve) => chrome.downloads.onCreated.addListener(function on(item) {
+      if (!item.url.startsWith("data:application/json")) return;
+      chrome.downloads.onCreated.removeListener(on); resolve(item);
+    }));
+    await chrome.runtime.sendMessage({ type: "restore-session", id: "missing" }); // user-facing: not logged
+    await chrome.runtime.sendMessage({ type: "no-such-action" });
+    await chrome.runtime.sendMessage({ type: "no-such-action" });
+    const item = await created;
+    const json = JSON.parse(new TextDecoder().decode(Uint8Array.from(atob(item.url.split(",")[1]), (c) => c.charCodeAt(0))));
+    await new Promise((r) => setTimeout(r, 1500));
+    return { json, erased: (await chrome.downloads.search({ id: item.id })).length === 0 };
+  });
+  await page.close();
+  const unknown = result.json.errors.find((e) => e.message === "Unknown action: no-such-action");
+  expect(unknown).toMatchObject({ source: "action:no-such-action", count: 2 });
+  expect(result.json.errors.some((e) => e.message === "Session not found")).toBe(false);
+  expect(result.json.version).toMatch(/^\d+\.\d+\.\d+$/);
+  expect(result.erased).toBe(true);
+  const stored = await api("storage", "errorLog"); expect(stored.errorLog.some((e) => e.message === "Unknown action: no-such-action")).toBe(true);
+});
+
 test("settings persist through the real dashboard UI", async () => {
   const page = await context.newPage(); await page.goto(`chrome-extension://${extensionId}/dashboard.html`); await page.getByRole("button", { name:"Settings" }).click();
   const mode = page.locator('[data-setting="groupingMode"]'); await mode.selectOption("subdomain"); await expect(page.getByText("Saved.")).toBeVisible();

@@ -1,4 +1,6 @@
 import { DEFAULTS, normalizeFocusDomains } from "./core.js";
+import { reportPageErrors } from "./errors.js";
+reportPageErrors("dashboard");
 import { sessionsToCsv, sessionsToJson } from "./export.js";
 const $ = (s) => document.querySelector(s);
 document.querySelectorAll("[data-tab]").forEach((b) => b.onclick = () => { document.querySelectorAll("[data-tab],.panel").forEach((e) => e.classList.remove("active")); b.classList.add("active"); $(`#${b.dataset.tab}`).classList.add("active"); });

@@ -1,3 +1,5 @@
+import { reportPageErrors } from "./errors.js";
+reportPageErrors("popup");
 const status = document.querySelector("#status");
 const focusStatus = document.querySelector("#focusStatus");
 document.querySelectorAll("[data-action]").forEach((button) => button.addEventListener("click", async () => {

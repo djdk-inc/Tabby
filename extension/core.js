@@ -138,3 +138,16 @@ export function isFocusScheduleActive(now, start = "09:00", end = "17:00", days 
   const previousDay = (date.getDay() + 6) % 7;
   return currentMinute < endMinute && enabledDays.has(previousDay);
 }
+
+export const ERROR_LOG_LIMIT = 200;
+
+// Adds one error to the log: repeats of the same message from the same source become one
+// entry with a count; newest first; capped so the file stays small.
+export function addToErrorLog(log, { message, source, stack = null, version }, now, limit = ERROR_LOG_LIMIT) {
+  const known = log.find((entry) => entry.message === message && entry.source === source);
+  if (known) {
+    const updated = { ...known, count: known.count + 1, lastSeen: now, version, stack: stack || known.stack };
+    return [updated, ...log.filter((entry) => entry !== known)];
+  }
+  return [{ message, source, stack, version, count: 1, firstSeen: now, lastSeen: now }, ...log].slice(0, limit);
+}

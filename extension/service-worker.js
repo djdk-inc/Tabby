@@ -1,7 +1,8 @@
 import {
   DEFAULTS, FOCUS_TAB_LIMIT, canonicalUrl, chooseDuplicateKeeper, groupLabel, groupTitle,
-  isFocusScheduleActive, isProtected, isWebUrl, mergePlan, restrictedDomainForUrl
+  addToErrorLog, isFocusScheduleActive, isProtected, isWebUrl, mergePlan, restrictedDomainForUrl
 } from "./core.js";
+import { UserFacingError } from "./errors.js";
 
 const COLORS = ["blue", "red", "yellow", "green", "pink", "purple", "cyan", "orange", "grey"];
 const organizing = new Map();
@@ -73,7 +74,7 @@ function queueFocusLimitCheck(tab) {
 async function updateFocusBlock(token, updater) {
   const { pendingFocusBlocks = {} } = await chrome.storage.session.get("pendingFocusBlocks");
   const block = pendingFocusBlocks[token];
-  if (!block) throw new Error("This focus-limit decision is no longer available.");
+  if (!block) throw new UserFacingError("This focus-limit decision is no longer available.");
   const result = await updater(block);
   delete pendingFocusBlocks[token];
   await chrome.storage.session.set({ pendingFocusBlocks });
@@ -93,9 +94,63 @@ async function unlessStripChanged(step) {
     throw error;
   }
 }
-// Background listeners are best-effort; log instead of leaving uncaught rejections.
-function inBackground(promise) {
-  promise.catch((error) => console.warn("Tabby background task failed:", error?.message || error));
+// Error log: every unexpected failure is kept in storage and mirrored to
+// <Downloads>/tabby_errors.json so known errors can be fixed later.
+const ERROR_FILE = "tabby_errors.json";
+const VERSION = chrome.runtime.getManifest().version;
+let errorLogQueue = Promise.resolve();
+let errorFileTimer = null;
+const erasingDownloads = new Set();
+
+function recordError(error, source) {
+  if (error instanceof UserFacingError) return;
+  const entry = { message: String(error?.message || error), source, stack: error?.stack || null, version: VERSION };
+  console.warn(`Tabby error (${source}):`, entry.message);
+  errorLogQueue = errorLogQueue.then(async () => {
+    const { errorLog = [] } = await chrome.storage.local.get("errorLog");
+    await chrome.storage.local.set({ errorLog: addToErrorLog(errorLog, entry, new Date().toISOString()) });
+    clearTimeout(errorFileTimer);
+    errorFileTimer = setTimeout(() => writeErrorFile().catch((e) => console.warn("Tabby could not write error file:", e?.message)), 2000);
+  }).catch(() => {});
+  return errorLogQueue;
+}
+
+function base64(text) {
+  const bytes = new TextEncoder().encode(text);
+  let binary = "";
+  for (let i = 0; i < bytes.length; i += 0x8000) binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+  return btoa(binary);
+}
+
+async function writeErrorFile() {
+  const { errorLog = [] } = await chrome.storage.local.get("errorLog");
+  const body = JSON.stringify({ extension: "Tabby", version: VERSION, updatedAt: new Date().toISOString(), errors: errorLog }, null, 2);
+  const id = await chrome.downloads.download({
+    url: `data:application/json;base64,${base64(body)}`, filename: ERROR_FILE, conflictAction: "overwrite", saveAs: false
+  });
+  erasingDownloads.add(id);
+  return id;
+}
+
+// Keep the file but drop it from Chrome's download history.
+chrome.downloads.onChanged.addListener((delta) => {
+  if (!erasingDownloads.has(delta.id) || delta.state?.current !== "complete") return;
+  erasingDownloads.delete(delta.id);
+  chrome.downloads.erase({ id: delta.id });
+});
+
+// A new version starts a fresh log: fixed errors disappear, unfixed ones get logged again.
+chrome.runtime.onInstalled.addListener(({ reason }) => {
+  if (reason !== "update") return;
+  inBackground(chrome.storage.local.set({ errorLog: [] }).then(writeErrorFile));
+});
+
+self.addEventListener("unhandledrejection", (event) => recordError(event.reason, "unhandled"));
+self.addEventListener("error", (event) => recordError(event.error || event.message, "uncaught"));
+
+// Background listeners are best-effort; failures go to the error log, never uncaught.
+function inBackground(promise, source = "background") {
+  promise.catch((error) => recordError(error, source));
 }
 
 async function organizeWindow(windowId) {
@@ -228,7 +283,7 @@ async function saveCurrentSession(name) {
 async function findSession(id) {
   const { sessions = [] } = await chrome.storage.local.get("sessions");
   const session = sessions.find((s) => s.id === id);
-  if (!session) throw new Error("Session not found");
+  if (!session) throw new UserFacingError("Session not found");
   return session;
 }
 
@@ -237,7 +292,7 @@ async function restoreWindow(savedWindow, focused) {
   const urls = savedWindow.tabs.map((t) => t.url);
   if (!urls.length) return null;
   if (savedWindow.incognito && !(await chrome.extension.isAllowedIncognitoAccess())) {
-    throw new Error("Allow Tabby in Incognito (chrome://extensions → Tabby → Details) to restore incognito windows.");
+    throw new UserFacingError("Allow Tabby in Incognito (chrome://extensions → Tabby → Details) to restore incognito windows.");
   }
   const win = await chrome.windows.create({ url: urls, focused, incognito: Boolean(savedWindow.incognito) });
   const tabs = await chrome.tabs.query({ windowId: win.id });
@@ -258,7 +313,7 @@ async function restoreSession(id) {
 
 async function restoreSessionWindow(id, index) {
   const savedWindow = (await findSession(id)).windows[index];
-  if (!savedWindow) throw new Error("Window not found");
+  if (!savedWindow) throw new UserFacingError("Window not found");
   return { windows: (await restoreWindow(savedWindow, true)) ? 1 : 0 };
 }
 
@@ -312,11 +367,12 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       case "save-session": return saveCurrentSession(message.name);
       case "restore-session": return restoreSession(message.id);
       case "restore-window": return restoreSessionWindow(message.id, message.index);
+      case "log-error": await recordError({ message: message.message, stack: message.stack }, message.source || "page"); return {};
       case "focus-status": return focusStatus();
       case "get-focus-block": {
         const { pendingFocusBlocks = {} } = await chrome.storage.session.get("pendingFocusBlocks");
         const block = pendingFocusBlocks[message.token];
-        if (!block) throw new Error("This focus-limit decision is no longer available.");
+        if (!block) throw new UserFacingError("This focus-limit decision is no longer available.");
         const tabs = await Promise.all(block.existingTabIds.map((id) => chrome.tabs.get(id).catch(() => null)));
         return { block: { ...block, existingTabs: tabs.filter(Boolean).map((tab) => ({ id:tab.id, title:tab.title, url:tab.url, windowId:tab.windowId })) } };
       }
@@ -329,7 +385,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       });
       case "focus-existing": return updateFocusBlock(message.token, async (block) => {
         const chosen = await chrome.tabs.get(message.tabId);
-        if (!block.existingTabIds.includes(chosen.id)) throw new Error("That tab is not one of the existing domain tabs.");
+        if (!block.existingTabIds.includes(chosen.id)) throw new UserFacingError("That tab is not one of the existing domain tabs.");
         await chrome.windows.update(chosen.windowId, { focused:true });
         await chrome.tabs.update(chosen.id, { active:true });
         if (sender.tab?.id && sender.tab.id !== chosen.id) await chrome.tabs.remove(sender.tab.id);
@@ -350,7 +406,10 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       }
       default: throw new Error(`Unknown action: ${message.type}`);
     }
-  })().then((result) => sendResponse({ ok: true, ...result })).catch((error) => sendResponse({ ok: false, error: error.message }));
+  })().then((result) => sendResponse({ ok: true, ...result })).catch((error) => {
+    recordError(error, `action:${message.type}`);
+    sendResponse({ ok: false, error: error.message });
+  });
   return true;
 });
 

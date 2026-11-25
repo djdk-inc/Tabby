@@ -22,14 +22,15 @@ Tabby is a local-first Manifest V3 Chrome extension that consolidates the reques
 - Replaces a fourth limited tab with a decision page that preserves the requested URL and offers existing-tab focus, save-for-later, explicit bypass, or close actions.
 - Treats protected pinned and audible tabs as focus-limit exceptions.
 - Stores all settings, saved tabs, and sessions locally in `chrome.storage.local`.
+- Keeps a local log of unexpected errors and saves it to your downloads folder as `tabby_errors.json` (repeats are counted, not duplicated; the log resets on each update). Nothing is sent anywhere; the `downloads` permission exists only for this file.
 
 ## Install in Chrome
 
-1. Unzip `tabby-1.1.3.zip`.
+1. Unzip `tabby-1.2.0.zip`.
 2. Open `chrome://extensions`.
 3. Turn on **Developer mode**.
 4. Click **Load unpacked**.
-5. Select the unzipped `tabby-1.1.3` folder—the folder containing `manifest.json`.
+5. Select the unzipped `tabby-1.2.0` folder—the folder containing `manifest.json`.
 6. Pin **Tabby** from Chrome's Extensions menu if you want one-click access.
 
 Chrome may show a warning for developer-mode extensions after a restart. This build is intentionally unpacked and has not been submitted to the Chrome Web Store.

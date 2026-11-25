@@ -7,6 +7,13 @@
 - Logic with non-obvious behavior lives as pure functions in `extension/core.js`; the service worker only wires those functions to `chrome.*` APIs.
 - Tab-strip code tolerates the strip changing underneath it (tabs closing, groups vanishing, user dragging): a run skips the affected step rather than failing, and background listeners never leave uncaught rejections.
 
+## Known errors
+
+- Tabby records every unexpected failure (service worker, message handlers, background listeners, extension pages) and mirrors the log to `~/Downloads/tabby_errors.json`. Each entry has `message`, `source`, `stack`, `version`, `count`, `firstSeen`, and `lastSeen`; repeats share one entry.
+- Expected, explained outcomes (`UserFacingError` in `extension/errors.js`) and tab-strip races that Tabby recovers from are not errors and stay out of the log.
+- The log starts empty on each version update, so the file lists only errors seen since the installed release.
+- "Fix the known errors" means: every entry in `~/Downloads/tabby_errors.json` has a test that reproduces it and now passes, the fix ships in a new release, and that release is installed into the user's unpacked Tabby folder. An entry that is not a bug becomes a `UserFacingError` or a recovered race instead.
+
 ## Testing
 
 - Browser tests never take over the user's screen: Playwright runs Chromium's new headless mode (`channel: "chromium"`). A visible browser runs only when someone asks to watch (`TABBY_HEADED=1`).
