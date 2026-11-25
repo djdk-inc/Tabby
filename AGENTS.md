@@ -3,7 +3,7 @@
 ## Development
 
 - `extension/` is the whole product: plain MV3 JavaScript, no build step, loaded unpacked.
-- Changes reach `main` through a short-lived branch and pull request; merged branches are deleted, so the remote holds only `main`.
+- Work is committed and pushed straight to `main`: no feature branches or pull requests. The remote holds only `main`.
 - Logic with non-obvious behavior lives as pure functions in `extension/core.js`; the service worker only wires those functions to `chrome.*` APIs.
 - Tab-strip code tolerates the strip changing underneath it (tabs closing, groups vanishing, user dragging): a run skips the affected step rather than failing, and background listeners never leave uncaught rejections.
 
