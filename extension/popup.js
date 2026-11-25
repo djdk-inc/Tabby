@@ -1,5 +1,7 @@
 import { reportPageErrors } from "./errors.js";
 reportPageErrors("popup");
+import { reloadIfFolderUpdated } from "./self-update.js";
+reloadIfFolderUpdated();
 const status = document.querySelector("#status");
 const focusStatus = document.querySelector("#focusStatus");
 // Organize = merge windows, remove duplicates, group and sort, collapse inactive groups.

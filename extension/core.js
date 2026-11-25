@@ -177,3 +177,20 @@ export function addToErrorLog(log, { message, source, stack = null, version }, n
   }
   return [{ message, source, stack, version, count: 1, firstSeen: now, lastSeen: now }, ...log].slice(0, limit);
 }
+
+// Every URL saved in any session, once each (same canonical form as duplicate-tab removal),
+// sorted alphabetically. `incognito`/`regular` say which kinds of window it was saved from.
+// filter: "all" | "regular" | "incognito".
+export function savedUrls(sessions, filter = "all", stripTracking = true) {
+  const byUrl = new Map();
+  for (const session of sessions) for (const win of session.windows) for (const tab of win.tabs) {
+    if (!isWebUrl(tab.url)) continue;
+    const url = canonicalUrl(tab.url, stripTracking);
+    const entry = byUrl.get(url) || { url, title: tab.title || url, incognito: false, regular: false };
+    entry[win.incognito ? "incognito" : "regular"] = true;
+    byUrl.set(url, entry);
+  }
+  return [...byUrl.values()]
+    .filter((e) => filter === "all" || e[filter])
+    .sort((a, b) => a.url.localeCompare(b.url));
+}

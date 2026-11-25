@@ -54,3 +54,7 @@ details[open] > summary .caret::before { transform:rotate(90deg); }
 .url-list a:hover { color:var(--accent); text-decoration:underline; }
 .popup-actions { display:grid; grid-template-columns:1fr 1fr 1fr; gap:8px; }
 .popup .brand h1 { margin:0; }
+.segmented { display:flex; gap:0; border:1px solid #34435e; border-radius:9px; overflow:hidden; }
+.segmented button { border-radius:0; padding:6px 12px; background:transparent; }
+.segmented button.active { background:#253249; color:var(--accent); }
+.saved-list { padding:8px 14px; }

@@ -63,7 +63,7 @@ test("popup and dashboard render as real extension pages", async () => {
   const settingsPage = await opened; await expect(settingsPage.locator("#settings")).toBeVisible(); await settingsPage.close();
   await expect.poll(() => page.isClosed()).toBe(true); // popup closes itself after opening a page
   const dash = await context.newPage(); await dash.goto(`chrome-extension://${extensionId}/dashboard.html`);
-  await expect(dash.locator("[data-tab]")).toHaveText(["Sessions", "Settings"]);
+  await expect(dash.locator("[data-tab]")).toHaveText(["Sessions", "Saved", "Settings"]);
   await expect(dash.locator("#sessions")).toBeVisible();
   await dash.screenshot({ path:"work/dashboard.png", fullPage:true });
   await dash.close();
@@ -122,6 +122,25 @@ test("Chrome assigns the organize and save-session keyboard shortcuts", async ()
   await page.close();
 });
 
+test("Saved tab lists each URL once, alphabetically, filterable by incognito", async () => {
+  await api("setStorage", { sessions: [
+    { id:"s-a", name:"A", createdAt:1, windows:[{ incognito:true, tabs:[{ url:"https://zeta.example/p?utm_source=x" }, { url:"https://alpha.example/" }] }] },
+    { id:"s-b", name:"B", createdAt:2, windows:[{ tabs:[{ url:"https://zeta.example/p" }, { url:"https://mid.example/" }] }] }
+  ] });
+  const page = await context.newPage(); await page.goto(`chrome-extension://${extensionId}/dashboard.html#saved`);
+  const urls = () => page.locator("#savedList a").allTextContents();
+  await expect(page.locator("#savedCount")).toHaveText("3 URLs");
+  expect(await urls()).toEqual(["https://alpha.example/", "https://mid.example/", "https://zeta.example/p"]);
+  await page.getByRole("button", { name:"Incognito" }).click();
+  await expect.poll(urls).toEqual(["https://alpha.example/", "https://zeta.example/p"]);
+  await page.getByRole("button", { name:"Regular" }).click();
+  await expect.poll(urls).toEqual(["https://mid.example/", "https://zeta.example/p"]);
+  const ready = page.waitForEvent("download"); await page.locator("#exportSavedCsv").click(); const download = await ready;
+  expect(download.suggestedFilename()).toMatch(/^tabby-saved-regular-\d{4}-\d{2}-\d{2}\.csv$/);
+  expect(fs.readFileSync(await download.path(), "utf8").split("\n")).toEqual(["url,title,incognito,regular", "https://mid.example/,https://mid.example/,false,true", "https://zeta.example/p,https://zeta.example/p,true,true"]);
+  await page.close();
+});
+
 test("saves and restores sessions", async () => {
   const seed = await context.newPage(); await seed.goto(`${origin}/a?session=1`);
   await rpc("save-session", { name:"E2E Session" });
@@ -154,12 +173,10 @@ test("sessions list nests windows and URLs and restores one window in its saved 
   await page.close();
 });
 
-test("exports saved sessions to real JSON and CSV downloads", async () => {
+test("exports sessions to a real CSV download; there is no JSON export", async () => {
   await rpc("save-session", { name:'Export, "Session"' });
   const page = await context.newPage(); await page.goto(`chrome-extension://${extensionId}/dashboard.html`); await page.getByRole("button", { name:"Sessions" }).click();
-  const jsonReady = page.waitForEvent("download"); await page.getByRole("button", { name:"Export JSON" }).click(); const jsonDownload = await jsonReady;
-  expect(jsonDownload.suggestedFilename()).toMatch(/^tabby-sessions-\d{4}-\d{2}-\d{2}\.json$/);
-  const json = JSON.parse(fs.readFileSync(await jsonDownload.path(), "utf8")); expect(json.sessions.some((x) => x.name === 'Export, "Session"')).toBe(true);
+  await expect(page.getByRole("button", { name:"Export JSON" })).toHaveCount(0);
   const csvReady = page.waitForEvent("download"); await page.getByRole("button", { name:"Export CSV" }).click(); const csvDownload = await csvReady;
   expect(csvDownload.suggestedFilename()).toMatch(/^tabby-sessions-\d{4}-\d{2}-\d{2}\.csv$/);
   const csv = fs.readFileSync(await csvDownload.path(), "utf8"); expect(csv).toContain("session_id,session_name,created_at"); expect(csv).toContain('"Export, ""Session"""');

@@ -3,6 +3,7 @@ import {
   addToErrorLog, groupsInOrder, upgradeFocusDefaults, isFocusScheduleActive, isProtected, isWebUrl, mergePlan, restrictedDomainForUrl
 } from "./core.js";
 import { UserFacingError } from "./errors.js";
+import { reloadIfFolderUpdated } from "./self-update.js";
 
 const COLORS = ["blue", "red", "yellow", "green", "pink", "purple", "cyan", "orange", "grey"];
 const organizing = new Map();
@@ -442,7 +443,12 @@ chrome.tabs.onActivated.addListener((info) => {
   activationQueues.set(info.windowId, next);
   next.finally(() => { if (activationQueues.get(info.windowId) === next) activationQueues.delete(info.windowId); });
 });
-chrome.alarms.onAlarm.addListener((alarm) => { if (alarm.name === "inactive-collapse") inBackground(unlessStripChanged(collapseInactiveGroups)); });
+chrome.alarms.onAlarm.addListener((alarm) => {
+  if (alarm.name !== "inactive-collapse") return;
+  inBackground(unlessStripChanged(collapseInactiveGroups));
+  reloadIfFolderUpdated();
+});
+reloadIfFolderUpdated();
 // Brief ✓ on the toolbar icon so a keyboard save is visible.
 async function flashSaved() {
   await chrome.action.setBadgeBackgroundColor({ color: "#2e7d32" });

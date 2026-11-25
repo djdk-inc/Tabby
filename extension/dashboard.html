@@ -1,7 +1,8 @@
 <!doctype html><html><head><meta charset="utf-8"><title>Tabby</title><link rel="stylesheet" href="ui.css"></head><body><main>
 <div class="brand"><img class="mark" src="icons/tabby-48.png" alt=""><div><h1>Tabby</h1><div class="muted">Local-only sessions and settings</div></div></div>
-<nav class="tabs"><button class="active" data-tab="sessions">Sessions</button><button data-tab="settings">Settings</button></nav>
-<section id="sessions" class="panel active"><div class="row"><h2>Sessions</h2><div class="button-row"><button id="exportSessionsJson">Export JSON</button><button id="exportSessionsCsv">Export CSV</button><button id="saveSession">Save current session</button></div></div><p class="status error" id="sessionStatus"></p><div id="sessionList"></div></section>
+<nav class="tabs"><button class="active" data-tab="sessions">Sessions</button><button data-tab="saved">Saved</button><button data-tab="settings">Settings</button></nav>
+<section id="sessions" class="panel active"><div class="row"><h2>Sessions</h2><div class="button-row"><button id="exportSessionsCsv">Export CSV</button><button id="saveSession">Save current session</button></div></div><p class="status error" id="sessionStatus"></p><div id="sessionList"></div></section>
+<section id="saved" class="panel"><div class="row"><h2>Saved <span class="muted" id="savedCount"></span></h2><div class="button-row"><div class="segmented" role="group" aria-label="Window kind"><button data-saved-filter="all" class="active">All</button><button data-saved-filter="regular">Regular</button><button data-saved-filter="incognito">Incognito</button></div><button id="exportSavedCsv">Export CSV</button></div></div><ul class="card url-list saved-list" id="savedList"></ul></section>
 <section id="settings" class="panel">
   <div class="card">
     <h2>Focus tab limit</h2>

@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   canonicalUrl, groupLabel, groupTitle, chooseDuplicateKeeper, isFocusScheduleActive,
-  addToErrorLog, groupsInOrder, mergePlan, upgradeFocusDefaults, normalizeFocusDomains, restrictedDomainForUrl
+  addToErrorLog, groupsInOrder, mergePlan, savedUrls, upgradeFocusDefaults, normalizeFocusDomains, restrictedDomainForUrl
 } from "../extension/core.js";
 import { sessionsToCsv } from "../extension/export.js";
 
@@ -81,4 +81,17 @@ test("old default 9-5 weekday schedule moves to on/all-day/every-day; customized
   const custom = { ...old, focusEnd: "18:00" };
   assert.equal(upgradeFocusDefaults(custom), custom);
   assert.equal(upgradeFocusDefaults(undefined), undefined);
+});
+
+test("saved URLs are deduplicated across sessions, sorted, and filterable by window kind", () => {
+  const sessions = [
+    { windows: [{ incognito: true, tabs: [{ url: "https://b.com/x?utm_source=1#top" }, { url: "https://a.com/" }] }] },
+    { windows: [{ tabs: [{ url: "https://b.com/x" }, { url: "https://c.com/" }, { url: "chrome://settings" }] }] }
+  ];
+  const all = savedUrls(sessions);
+  assert.deepEqual(all.map((e) => [e.url, e.incognito, e.regular]), [
+    ["https://a.com/", true, false], ["https://b.com/x", true, true], ["https://c.com/", false, true]
+  ]);
+  assert.deepEqual(savedUrls(sessions, "incognito").map((e) => e.url), ["https://a.com/", "https://b.com/x"]);
+  assert.deepEqual(savedUrls(sessions, "regular").map((e) => e.url), ["https://b.com/x", "https://c.com/"]);
 });
