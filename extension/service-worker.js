@@ -1,6 +1,6 @@
 import {
   DEFAULTS, FOCUS_TAB_LIMIT, canonicalUrl, chooseDuplicateKeeper, groupLabel, groupTitle,
-  addToErrorLog, groupsInOrder, isFocusScheduleActive, isProtected, isWebUrl, mergePlan, restrictedDomainForUrl
+  addToErrorLog, groupsInOrder, upgradeFocusDefaults, isFocusScheduleActive, isProtected, isWebUrl, mergePlan, restrictedDomainForUrl
 } from "./core.js";
 import { UserFacingError } from "./errors.js";
 
@@ -82,6 +82,13 @@ async function updateFocusBlock(token, updater) {
 }
 
 chrome.runtime.onInstalled.addListener(initialize);
+chrome.runtime.onInstalled.addListener(({ reason }) => {
+  if (reason !== "update") return;
+  inBackground(chrome.storage.local.get("settings").then(({ settings }) => {
+    const upgraded = upgradeFocusDefaults(settings);
+    if (upgraded !== settings) return chrome.storage.local.set({ settings: upgraded });
+  }));
+});
 chrome.runtime.onStartup.addListener(initialize);
 
 // Tabs and groups can change while Tabby works (user closes a tab, a duplicate is removed,

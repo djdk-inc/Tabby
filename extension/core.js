@@ -9,14 +9,25 @@ export const DEFAULTS = {
   protectPinned: true,
   protectAudible: true,
   stripTracking: true,
-  focusLimitEnabled: false,
-  focusStart: "09:00",
-  focusEnd: "17:00",
-  focusDays: [1, 2, 3, 4, 5],
+  focusLimitEnabled: true,
+  focusStart: "00:00",
+  focusEnd: "00:00",
+  focusDays: [0, 1, 2, 3, 4, 5, 6],
   focusDomains: ["youtube.com", "reddit.com", "x.com", "instagram.com", "tiktok.com"]
 };
 
 export const FOCUS_TAB_LIMIT = 3;
+
+// Before 2.1.0 focus limits defaulted to off, 09:00–17:00, weekdays. Saved settings that still
+// match that exactly were never chosen, so they move to the current defaults; any change is kept.
+export function upgradeFocusDefaults(settings) {
+  if (!settings) return settings;
+  const untouched = settings.focusLimitEnabled === false && settings.focusStart === "09:00" && settings.focusEnd === "17:00" &&
+    JSON.stringify(settings.focusDays) === "[1,2,3,4,5]";
+  if (!untouched) return settings;
+  const { focusLimitEnabled, focusStart, focusEnd, focusDays } = DEFAULTS;
+  return { ...settings, focusLimitEnabled, focusStart, focusEnd, focusDays };
+}
 
 const MULTIPART_SUFFIXES = new Set(["co.uk", "org.uk", "com.au", "co.jp", "co.nz", "com.br"]);
 const TRACKING = /^(utm_[a-z]+|fbclid|gclid|mc_cid|mc_eid)$/i;

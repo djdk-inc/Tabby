@@ -25,11 +25,11 @@ Tabby is a local-first Manifest V3 Chrome extension that consolidates the reques
 
 ## Install in Chrome
 
-1. Unzip `tabby-2.0.0.zip`.
+1. Unzip `tabby-2.1.0.zip`.
 2. Open `chrome://extensions`.
 3. Turn on **Developer mode**.
 4. Click **Load unpacked**.
-5. Select the unzipped `tabby-2.0.0` folder—the folder containing `manifest.json`.
+5. Select the unzipped `tabby-2.1.0` folder—the folder containing `manifest.json`.
 6. Pin **Tabby** from Chrome's Extensions menu if you want one-click access.
 
 Chrome may show a warning for developer-mode extensions after a restart. This build is intentionally unpacked and has not been submitted to the Chrome Web Store.
@@ -48,7 +48,7 @@ Chrome can leave a suggested shortcut unassigned when it conflicts with the brow
 
 The toolbar popup has three buttons: **Organize** (merge windows, remove duplicates, group and sort, collapse inactive groups), **Sessions** (save, browse, and restore sessions), and **Settings**. The focus decision page's **Save for later** stores the URL as a one-tab session.
 
-Focus tab limits are off until enabled. In Settings, choose local start and end times, active weekdays, and one limited domain per line. Equal start and end times mean all day on the selected days; overnight ranges continue into the next morning. Subdomains count under the configured parent domain. Limits apply only to new navigations while the schedule is active, so enabling a schedule never retroactively closes existing tabs.
+Focus tab limits are on by default, all day, every day, for the domains listed in Settings (YouTube, Reddit, X, Instagram, TikTok). Updating from an earlier version switches the old untouched defaults (off, 9–5 weekdays) to these; settings you changed are kept. In Settings, choose local start and end times, active weekdays, and one limited domain per line. Equal start and end times mean all day on the selected days; overnight ranges continue into the next morning. Subdomains count under the configured parent domain. Limits apply only to new navigations while the schedule is active, so enabling a schedule never retroactively closes existing tabs.
 
 Automatic grouping only handles `http://` and `https://` tabs. Chrome internal pages, extension pages, and protected pinned/audible tabs are deliberately left alone. Domain mode uses a compact built-in public-suffix heuristic; choose **Subdomain** when exact host boundaries matter.
 

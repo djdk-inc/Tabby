@@ -58,6 +58,7 @@ test("popup and dashboard render as real extension pages", async () => {
   await expect(page.getByRole("heading", { name:"Tabby" })).toBeVisible();
   await expect(page.locator("button")).toHaveText(["Organize", "Sessions", "Settings"]);
   await expect(page.getByText("A calmer browser")).toHaveCount(0);
+  await expect(page.locator("#focusStatus")).toHaveText("Focus hours are active: up to 3 tabs per limited domain across all windows.");
   const opened = context.waitForEvent("page"); await page.getByRole("button", { name:"Settings" }).click();
   const settingsPage = await opened; await expect(settingsPage.locator("#settings")).toBeVisible(); await settingsPage.close();
   await expect.poll(() => page.isClosed()).toBe(true); // popup closes itself after opening a page

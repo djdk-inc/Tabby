@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   canonicalUrl, groupLabel, groupTitle, chooseDuplicateKeeper, isFocusScheduleActive,
-  addToErrorLog, groupsInOrder, mergePlan, normalizeFocusDomains, restrictedDomainForUrl
+  addToErrorLog, groupsInOrder, mergePlan, upgradeFocusDefaults, normalizeFocusDomains, restrictedDomainForUrl
 } from "../extension/core.js";
 import { sessionsToCsv } from "../extension/export.js";
 
@@ -72,4 +72,12 @@ test("groups are in order only when alphabetical, contiguous, and before ungroup
   assert.equal(groupsInOrder(strip(2, 1, -1), title), false);
   assert.equal(groupsInOrder(strip(1, -1, 2), title), false);
   assert.equal(groupsInOrder(strip(1, 2, 1), title), false);
+});
+
+test("old untouched focus defaults move to on/all-day/every-day; customized ones are kept", () => {
+  const old = { focusLimitEnabled: false, focusStart: "09:00", focusEnd: "17:00", focusDays: [1, 2, 3, 4, 5], groupingMode: "subdomain" };
+  assert.deepEqual(upgradeFocusDefaults(old), { ...old, focusLimitEnabled: true, focusStart: "00:00", focusEnd: "00:00", focusDays: [0, 1, 2, 3, 4, 5, 6] });
+  const custom = { ...old, focusEnd: "18:00" };
+  assert.equal(upgradeFocusDefaults(custom), custom);
+  assert.equal(upgradeFocusDefaults(undefined), undefined);
 });
