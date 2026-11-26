@@ -333,7 +333,7 @@ test("focus schedule boundaries execute in the real extension browser context", 
   await page.close();
 });
 
-test("fourth domain tab is safely gated across windows with explicit and protected exceptions", async () => {
+test("a fourth tab on a limited domain closes, counting pinned tabs, across windows and bursts", async () => {
   const control = await context.newPage();
   await control.goto(`chrome-extension://${extensionId}/dashboard.html`);
   const priorTabs = await control.evaluate(() => chrome.tabs.query({}));
@@ -343,43 +343,48 @@ test("fourth domain tab is safely gated across windows with explicit and protect
     const { settings = {} } = await chrome.storage.local.get("settings");
     await chrome.storage.local.set({ settings:{ ...settings, focusLimitEnabled:true, focusStart:"00:00", focusEnd:"00:00", focusDays:[0,1,2,3,4,5,6], focusDomains:["127.0.0.1"], autoOrganize:false, dedupeOnNavigate:false, protectPinned:true, protectAudible:true } });
   });
+  const localTabs = async () => (await api("tabs", {})).filter((tab) => (tab.pendingUrl || tab.url)?.startsWith(origin));
+  const settle = () => new Promise((resolve) => setTimeout(resolve, 1500));
 
-  const first = await api("createTab", { url:`${origin}/a?focus=1`, active:false });
-  const second = await api("createTab", { windowId:first.windowId, url:`${origin}/a?focus=2`, active:false });
+  // A blank tab opened before the domain fills up; it navigates there later.
+  const blank = await api("createTab", { url:"about:blank", active:false });
+  const pinned = await api("createTab", { windowId:blank.windowId, url:`${origin}/a?focus=1`, active:false, pinned:true });
+  const second = await api("createTab", { windowId:blank.windowId, url:`${origin}/a?focus=2`, active:false });
   const otherWindow = await api("createWindow", { url:`${origin}/a?focus=3`, focused:false });
-  const windowIds = new Set([first.windowId, otherWindow.id]);
-  expect(windowIds.size).toBe(2);
+  expect(otherWindow.id).not.toBe(blank.windowId);
+  await settle();
+  expect((await localTabs()).length).toBe(3);
 
-  const fourth = await api("createTab", { windowId:first.windowId, url:`${origin}/a?focus=4`, active:false });
-  await expect.poll(async () => (await api("tabs", {})).find((tab) => tab.id === fourth.id)?.url).toContain("focus-limit.html");
-  const decision = context.pages().find((page) => page.url().includes("focus-limit.html"));
-  expect(decision).toBeTruthy();
-  await expect(decision.getByRole("heading", { name:"Three tabs is enough for now" })).toBeVisible();
-  await expect(decision.getByText(`${origin}/a?focus=4`, { exact:true })).toBeVisible();
-  await expect(decision.locator("#existingTabs button")).toHaveCount(3);
+  const fourth = await api("createTab", { windowId:blank.windowId, url:`${origin}/a?focus=4`, active:false });
+  await expect.poll(async () => (await api("tabs", {})).some((tab) => tab.id === fourth.id)).toBe(false);
+  expect((await localTabs()).map((tab) => tab.id).sort()).toEqual([pinned.id, second.id, otherWindow.tabs[0].id].sort());
 
-  await decision.getByRole("button", { name:"Open anyway in this tab" }).click();
-  await expect.poll(async () => (await api("tabs", {})).find((tab) => tab.id === fourth.id)?.url).toBe(`${origin}/a?focus=4`);
+  // Browsing inside a tab already on the domain is not a new tab.
+  await api("updateTab", { id:second.id, props:{ url:`${origin}/b?focus=2b` } });
+  await expect.poll(async () => (await api("tabs", {})).find((tab) => tab.id === second.id)?.url).toBe(`${origin}/b?focus=2b`);
 
-  const fifth = await api("createTab", { windowId:first.windowId, url:`${origin}/a?focus=5`, active:false });
-  await expect.poll(async () => (await api("tabs", {})).find((tab) => tab.id === fifth.id)?.url).toContain("focus-limit.html");
-  const decision5 = context.pages().find((page) => page.url().includes("focus-limit.html"));
-  await decision5.getByRole("button", { name:"Save for later" }).click();
-  await expect(decision5.getByText("Saved to Sessions.")).toBeVisible();
-  const saved = (await api("storage", "sessions")).sessions[0];
-  expect(saved.name).toBe("Saved for later: 127.0.0.1"); expect(saved.windows[0].tabs[0].url).toBe(`${origin}/a?focus=5`);
-  await api("removeTabs", fifth.id);
+  // An existing tab entering the domain from elsewhere is a fourth tab.
+  await api("updateTab", { id:blank.id, props:{ url:`${origin}/a?focus=blank` } });
+  await expect.poll(async () => (await api("tabs", {})).some((tab) => tab.id === blank.id)).toBe(false);
 
-  const pinned = await api("createTab", { windowId:first.windowId, url:"about:blank", active:false, pinned:true });
-  await api("updateTab", { id:pinned.id, props:{ url:`${origin}/b?focus=pinned` } });
-  await expect.poll(async () => (await api("tabs", {})).find((tab) => tab.id === pinned.id)?.url).toBe(`${origin}/b?focus=pinned`);
+  // Several tabs opened at once, before any has loaded, all close.
+  await control.evaluate((o) => Promise.all([1, 2, 3].map((i) => chrome.tabs.create({ url:`${o}/a?burst=${i}`, active:false }))), origin);
+  await settle();
+  expect((await localTabs()).length).toBe(3);
+
+  // A tab that closes frees a slot.
+  await api("removeTabs", second.id);
+  const replacement = await api("createTab", { url:`${origin}/a?focus=replacement`, active:false });
+  await settle();
+  expect((await api("tabs", {})).some((tab) => tab.id === replacement.id)).toBe(true);
 
   await control.evaluate(async () => {
     const { settings = {} } = await chrome.storage.local.get("settings");
     await chrome.storage.local.set({ settings:{ ...settings, focusDays:[] } });
   });
-  const outside = await api("createTab", { windowId:first.windowId, url:`${origin}/b?focus=outside`, active:false });
-  await expect.poll(async () => (await api("tabs", {})).find((tab) => tab.id === outside.id)?.url).toBe(`${origin}/b?focus=outside`);
+  const outside = await api("createTab", { url:`${origin}/b?focus=outside`, active:false });
+  await settle();
+  expect((await api("tabs", {})).find((tab) => tab.id === outside.id)?.url).toBe(`${origin}/b?focus=outside`);
   await control.close();
 });
 
@@ -399,7 +404,7 @@ test("focus settings persist through the dashboard controls", async () => {
   await page.close();
 });
 
-test("updating over an enabled 9-5 weekday schedule makes it all day, and a 4th tab is redirected", async () => {
+test("updating over an enabled 9-5 weekday schedule makes it all day, and a 4th tab closes", async () => {
   // Mirrors a real update: old version installed with saved settings, folder replaced, Chrome restarted.
   const work = fs.mkdtempSync(path.resolve("work/upgrade-"));
   const extDir = path.join(work, "ext"); fs.cpSync(extensionPath, extDir, { recursive: true });
@@ -424,7 +429,7 @@ test("updating over an enabled 9-5 weekday schedule makes it all day, and a 4th 
   await expect.poll(async () => { const { settings } = await page.evaluate(() => chrome.storage.local.get("settings")); return [settings.focusLimitEnabled, settings.focusStart, settings.focusEnd, settings.focusDays.length]; }, { timeout: 10000 })
     .toEqual([true, "00:00", "00:00", 7]);
   for (let i = 1; i <= 4; i++) { const t = await ctx.newPage(); await t.goto(`${origin}/a?upgrade=${i}`).catch(() => {}); }
-  await expect.poll(async () => (await page.evaluate(() => chrome.tabs.query({}))).filter((t) => t.url.includes("focus-limit.html")).length).toBe(1);
+  await expect.poll(async () => (await page.evaluate(() => chrome.tabs.query({}))).filter((t) => t.url.startsWith(origin)).length).toBe(3);
   const popup = await ctx.newPage(); await popup.goto(`chrome-extension://${id}/popup.html`);
   await expect(popup.locator("#focusStatus")).toContainText("Focus hours are active");
   await ctx.close(); fs.rmSync(work, { recursive: true, force: true });

@@ -6,14 +6,14 @@
 <section id="settings" class="panel">
   <div class="card">
     <h2>Focus tab limit</h2>
-    <p class="muted">During focus hours, Tabby allows up to 3 regular tabs for each domain below across all Chrome windows. A fourth tab opens a decision page and is never silently discarded.</p>
+    <p class="muted">During focus hours, Tabby allows up to 3 tabs for each domain below across all Chrome windows. A fourth tab on that domain closes as soon as it opens.</p>
     <label class="setting">Enable focus tab limits <input type="checkbox" data-setting="focusLimitEnabled"></label>
     <div class="setting"><span>Active hours <span class="muted">(your local time)</span></span><span class="time-range"><input aria-label="Focus start" type="time" data-setting="focusStart"> to <input aria-label="Focus end" type="time" data-setting="focusEnd"></span></div>
     <fieldset><legend>Active days</legend><div class="weekday-grid">
       <label><input type="checkbox" data-focus-day="1"> Mon</label><label><input type="checkbox" data-focus-day="2"> Tue</label><label><input type="checkbox" data-focus-day="3"> Wed</label><label><input type="checkbox" data-focus-day="4"> Thu</label><label><input type="checkbox" data-focus-day="5"> Fri</label><label><input type="checkbox" data-focus-day="6"> Sat</label><label><input type="checkbox" data-focus-day="0"> Sun</label>
     </div></fieldset>
     <label class="stacked-setting">Limited domains <span class="muted">One domain per line. Subdomains are included.</span><textarea rows="6" data-setting="focusDomains" spellcheck="false"></textarea></label>
-    <p class="muted">Pinned and audible tabs follow the protection settings below and do not count toward the limit. On the decision page you can focus an existing tab, save the blocked URL, close it, or allow it for that tab.</p>
+    <p class="muted">Every tab counts, pinned and playing ones included. Browsing inside a tab you already have on the domain is never limited.</p>
   </div>
   <div class="card">
     <h2>Organization and protection</h2>

@@ -125,6 +125,21 @@ export function restrictedDomainForUrl(raw, domains = []) {
   return normalizeFocusDomains(domains).find((domain) => host === domain || host.endsWith(`.${domain}`)) || null;
 }
 
+// Where a tab is, or is about to be: a tab still loading counts by the URL it is heading to.
+export function tabDestination(tab) {
+  return tab.pendingUrl || tab.url || "";
+}
+
+// A tab that enters a limited domain (it was not already on it) is over the limit when
+// FOCUS_TAB_LIMIT other tabs already hold that domain. Every tab counts, pinned and audible
+// ones included; navigating within the domain is never limited. Returns the domain, or null.
+export function focusLimitExceeded(tab, priorDomain, allTabs, domains, limit = FOCUS_TAB_LIMIT) {
+  const domain = restrictedDomainForUrl(tabDestination(tab), domains);
+  if (!domain || domain === priorDomain) return null;
+  const holding = allTabs.filter((other) => other.id !== tab.id && restrictedDomainForUrl(tabDestination(other), domains) === domain);
+  return holding.length >= limit ? domain : null;
+}
+
 function minuteOfDay(value) {
   const match = /^(\d{2}):(\d{2})$/.exec(String(value));
   if (!match) return null;

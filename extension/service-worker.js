@@ -1,6 +1,6 @@
 import {
   DEFAULTS, FOCUS_TAB_LIMIT, canonicalUrl, chooseDuplicateKeeper, groupLabel, groupTitle,
-  addToErrorLog, groupsInOrder, upgradeFocusDefaults, isFocusScheduleActive, isProtected, isWebUrl, mergePlan, restrictedDomainForUrl
+  addToErrorLog, focusLimitExceeded, groupsInOrder, upgradeFocusDefaults, isFocusScheduleActive, isProtected, isWebUrl, mergePlan, restrictedDomainForUrl, tabDestination
 } from "./core.js";
 import { UserFacingError } from "./errors.js";
 import { reloadIfFolderUpdated } from "./self-update.js";
@@ -34,52 +34,30 @@ async function focusStatus(cfg = null, now = new Date()) {
   };
 }
 
-async function enforceTabLimit(tab, now = new Date()) {
-  if (!tab?.id || !isWebUrl(tab.url)) return { blocked: false };
+// Each tab's limited domain as last seen (null when on none), so a tab moving around inside a
+// domain is told apart from one entering it. Session storage survives service-worker restarts.
+// A tab with no entry yet is one this worker never saw open; its first navigation is only recorded.
+async function enforceTabLimit(tab, { created = false } = {}) {
+  if (!tab?.id) return { closed: false };
   const cfg = await settings();
-  const status = await focusStatus(cfg, now);
-  if (!status.active || isProtected(tab, cfg)) return { blocked: false };
-  const domain = restrictedDomainForUrl(tab.url, cfg.focusDomains);
-  if (!domain) return { blocked: false };
-  const session = await chrome.storage.session.get(["focusBypassTabs", "pendingFocusBlocks"]);
-  if (session.focusBypassTabs?.[tab.id]) return { blocked: false, bypassed: true };
-  const allTabs = await chrome.tabs.query({ windowType: "normal" });
-  const existing = allTabs.filter((candidate) =>
-    candidate.id !== tab.id &&
-    !isProtected(candidate, cfg) &&
-    restrictedDomainForUrl(candidate.url, cfg.focusDomains) === domain
-  );
-  if (existing.length < FOCUS_TAB_LIMIT) return { blocked: false, count: existing.length + 1 };
-  const token = crypto.randomUUID();
-  const pendingFocusBlocks = session.pendingFocusBlocks || {};
-  pendingFocusBlocks[token] = {
-    token,
-    tabId: tab.id,
-    url: tab.url,
-    title: tab.title || tab.url,
-    domain,
-    existingTabIds: existing.map((candidate) => candidate.id),
-    createdAt: Date.now()
-  };
-  await chrome.storage.session.set({ pendingFocusBlocks });
-  await chrome.tabs.update(tab.id, { url: chrome.runtime.getURL(`focus-limit.html#${token}`) });
-  return { blocked: true, domain, token };
+  const { focusTabDomains = {} } = await chrome.storage.session.get("focusTabDomains");
+  const known = Object.hasOwn(focusTabDomains, tab.id);
+  const prior = focusTabDomains[tab.id];
+  focusTabDomains[tab.id] = restrictedDomainForUrl(tabDestination(tab), cfg.focusDomains);
+  await chrome.storage.session.set({ focusTabDomains });
+  if (!created && !known) return { closed: false };
+  if (!(await focusStatus(cfg)).active) return { closed: false };
+  const domain = focusLimitExceeded(tab, prior, await chrome.tabs.query({ windowType: "normal" }), cfg.focusDomains);
+  if (!domain) return { closed: false };
+  await unlessStripChanged(() => chrome.tabs.remove(tab.id));
+  return { closed: true, domain };
 }
 
-function queueFocusLimitCheck(tab) {
-  const next = focusLimitQueue.then(() => enforceTabLimit(tab));
+// Checks run one at a time in event order, so a burst of new tabs sees each earlier close.
+function queueFocusLimitCheck(tab, options) {
+  const next = focusLimitQueue.then(() => enforceTabLimit(tab, options));
   focusLimitQueue = next.catch(() => {});
   return next;
-}
-
-async function updateFocusBlock(token, updater) {
-  const { pendingFocusBlocks = {} } = await chrome.storage.session.get("pendingFocusBlocks");
-  const block = pendingFocusBlocks[token];
-  if (!block) throw new UserFacingError("This focus-limit decision is no longer available.");
-  const result = await updater(block);
-  delete pendingFocusBlocks[token];
-  await chrome.storage.session.set({ pendingFocusBlocks });
-  return result;
 }
 
 chrome.runtime.onInstalled.addListener(initialize);
@@ -330,18 +308,6 @@ async function restoreSessionWindow(id, index) {
   return { windows: (await restoreWindow(savedWindow, true)) ? 1 : 0 };
 }
 
-// "Save for later" on the focus page keeps the blocked URL as a one-tab session.
-async function saveFocusBlock(block) {
-  const tab = await chrome.tabs.get(block.tabId).catch(() => null);
-  const session = {
-    id: crypto.randomUUID(), name: `Saved for later: ${block.domain}`, createdAt: Date.now(),
-    windows: [{ incognito: Boolean(tab?.incognito), tabs: [{ url: block.url, title: block.title || block.url, pinned: false, muted: false, group: null }] }]
-  };
-  const { sessions = [] } = await chrome.storage.local.get("sessions");
-  await chrome.storage.local.set({ sessions: [session, ...sessions] });
-  return { saved: true };
-}
-
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   (async () => {
     const current = sender.tab?.windowId || (await chrome.windows.getCurrent()).id;
@@ -356,33 +322,6 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       case "restore-window": return restoreSessionWindow(message.id, message.index);
       case "log-error": await recordError({ message: message.message, stack: message.stack }, message.source || "page"); return {};
       case "focus-status": return focusStatus();
-      case "get-focus-block": {
-        const { pendingFocusBlocks = {} } = await chrome.storage.session.get("pendingFocusBlocks");
-        const block = pendingFocusBlocks[message.token];
-        if (!block) throw new UserFacingError("This focus-limit decision is no longer available.");
-        const tabs = await Promise.all(block.existingTabIds.map((id) => chrome.tabs.get(id).catch(() => null)));
-        return { block: { ...block, existingTabs: tabs.filter(Boolean).map((tab) => ({ id:tab.id, title:tab.title, url:tab.url, windowId:tab.windowId })) } };
-      }
-      case "allow-focus-block": return updateFocusBlock(message.token, async (block) => {
-        const tabId = sender.tab?.id || block.tabId;
-        const stored = await chrome.storage.session.get("focusBypassTabs");
-        await chrome.storage.session.set({ focusBypassTabs: { ...(stored.focusBypassTabs || {}), [tabId]:true } });
-        await chrome.tabs.update(tabId, { url:block.url, active:true });
-        return { allowed:true };
-      });
-      case "focus-existing": return updateFocusBlock(message.token, async (block) => {
-        const chosen = await chrome.tabs.get(message.tabId);
-        if (!block.existingTabIds.includes(chosen.id)) throw new UserFacingError("That tab is not one of the existing domain tabs.");
-        await chrome.windows.update(chosen.windowId, { focused:true });
-        await chrome.tabs.update(chosen.id, { active:true });
-        if (sender.tab?.id && sender.tab.id !== chosen.id) await chrome.tabs.remove(sender.tab.id);
-        return { focused:true };
-      });
-      case "save-focus-block": return updateFocusBlock(message.token, saveFocusBlock);
-      case "close-focus-block": return updateFocusBlock(message.token, async () => {
-        if (sender.tab?.id) await chrome.tabs.remove(sender.tab.id);
-        return { closed:true };
-      });
       case "delete-session": {
         const { sessions = [] } = await chrome.storage.local.get("sessions");
         await chrome.storage.local.set({ sessions: sessions.filter((x) => x.id !== message.id) }); return { deleted: 1 };
@@ -398,22 +337,21 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
 chrome.tabs.onUpdated.addListener((tabId, change, tab) => inBackground((async () => {
   if (!change.url && change.status !== "complete") return;
-  if (change.url && (await queueFocusLimitCheck(tab)).blocked) return;
+  if (change.url && (await queueFocusLimitCheck(tab)).closed) return;
   const cfg = await settings();
   if (cfg.dedupeOnNavigate && tab.windowId) await unlessStripChanged(() => dedupeWindow(tab.windowId));
   if (cfg.autoOrganize && tab.windowId) await unlessStripChanged(() => organizeWindow(tab.windowId));
 })()));
 chrome.tabs.onCreated.addListener((tab) => inBackground((async () => {
+  if ((await queueFocusLimitCheck(tab, { created: true })).closed) return;
   const cfg = await settings();
   if (cfg.autoOrganize && tab.windowId) setTimeout(() => inBackground(unlessStripChanged(() => organizeWindow(tab.windowId))), 600);
 })()));
 chrome.tabs.onRemoved.addListener((tabId) => {
   const cleanup = focusLimitQueue.then(async () => {
-    const stored = await chrome.storage.session.get(["focusBypassTabs", "pendingFocusBlocks"]);
-    const focusBypassTabs = stored.focusBypassTabs || {};
-    delete focusBypassTabs[tabId];
-    const pendingFocusBlocks = Object.fromEntries(Object.entries(stored.pendingFocusBlocks || {}).filter(([, block]) => block.tabId !== tabId));
-    await chrome.storage.session.set({ focusBypassTabs, pendingFocusBlocks });
+    const { focusTabDomains = {} } = await chrome.storage.session.get("focusTabDomains");
+    delete focusTabDomains[tabId];
+    await chrome.storage.session.set({ focusTabDomains });
   });
   focusLimitQueue = cleanup.catch(() => {});
 });

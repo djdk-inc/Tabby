@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   canonicalUrl, groupLabel, groupTitle, chooseDuplicateKeeper, isFocusScheduleActive,
-  addToErrorLog, groupsInOrder, mergePlan, savedUrls, upgradeFocusDefaults, normalizeFocusDomains, restrictedDomainForUrl
+  addToErrorLog, groupsInOrder, mergePlan, savedUrls, upgradeFocusDefaults, normalizeFocusDomains, restrictedDomainForUrl, focusLimitExceeded
 } from "../extension/core.js";
 import { sessionsToCsv } from "../extension/export.js";
 
@@ -94,4 +94,15 @@ test("saved URLs are deduplicated, sorted, and split by incognito: Regular never
   ]);
   assert.deepEqual(savedUrls(sessions, "incognito").map((e) => e.url), ["https://a.com/", "https://b.com/x"]);
   assert.deepEqual(savedUrls(sessions, "regular").map((e) => e.url), ["https://c.com/"]);
+});
+
+test("focus limit counts every tab on the domain, including audible, pinned, and still-loading ones", () => {
+  const domains = ["youtube.com"];
+  const yt = (id, extra = {}) => ({ id, url: `https://www.youtube.com/watch?v=${id}`, ...extra });
+  const held = [yt(1, { audible: true }), yt(2, { pinned: true }), { id: 3, url: "", pendingUrl: "https://m.youtube.com/x" }];
+  assert.equal(focusLimitExceeded(yt(4), undefined, [...held, yt(4)], domains), "youtube.com");
+  assert.equal(focusLimitExceeded(yt(4), null, held.slice(0, 2), domains), null);
+  // Moving around inside the domain is not a new tab, even when already over the limit.
+  assert.equal(focusLimitExceeded(yt(4), "youtube.com", [...held, yt(5)], domains), null);
+  assert.equal(focusLimitExceeded({ id: 4, url: "https://example.com" }, null, held, domains), null);
 });
