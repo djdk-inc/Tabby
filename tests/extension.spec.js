@@ -34,7 +34,7 @@ async function api(fn, arg) {
 
 test.beforeAll(async () => {
   server = http.createServer((req, res) => {
-    const file = req.url?.startsWith("/audio") ? "audio.html" : req.url?.startsWith("/b") ? "b.html" : "a.html";
+    const file = req.url?.startsWith("/links") ? "links.html" : req.url?.startsWith("/audio") ? "audio.html" : req.url?.startsWith("/b") ? "b.html" : "a.html";
     res.writeHead(200, { "content-type":"text/html" }); res.end(fs.readFileSync(path.resolve("tests/fixtures", file)));
   }).listen(0, "127.0.0.1");
   await new Promise((resolve) => server.once("listening", resolve));
@@ -457,9 +457,68 @@ test("updating over an enabled 9-5 weekday schedule makes it all day, and a 4th 
   page = await ctx.newPage(); await page.goto(`chrome-extension://${id}/dashboard.html`);
   await expect.poll(async () => { const { settings } = await page.evaluate(() => chrome.storage.local.get("settings")); return [settings.focusLimitEnabled, settings.focusStart, settings.focusEnd, settings.focusDays.length]; }, { timeout: 10000 })
     .toEqual([true, "00:00", "00:00", 7]);
-  for (let i = 1; i <= 4; i++) { const t = await ctx.newPage(); await t.goto(`${origin}/a?upgrade=${i}`).catch(() => {}); }
+  // Opened through the tabs API: a Playwright goto on a tab Tabby closes mid-load can throw past .catch.
+  for (let i = 1; i <= 4; i++) { await page.evaluate((url) => chrome.tabs.create({ url, active:false }), `${origin}/a?upgrade=${i}`); await page.waitForTimeout(300); }
   await expect.poll(async () => (await page.evaluate(() => chrome.tabs.query({}))).filter((t) => t.url.startsWith(origin)).length).toBe(3);
   const popup = await ctx.newPage(); await popup.goto(`chrome-extension://${id}/popup.html`);
   await expect(popup.locator("#focusStatus")).toContainText("Focus hours are active");
   await ctx.close(); fs.rmSync(work, { recursive: true, force: true });
+});
+
+async function limitLocalhost(control) {
+  const localIds = (await control.evaluate(() => chrome.tabs.query({}))).filter((tab) => (tab.pendingUrl || tab.url)?.startsWith(origin)).map((tab) => tab.id);
+  if (localIds.length) await control.evaluate((ids) => chrome.tabs.remove(ids), localIds);
+  await control.evaluate(async () => {
+    const { settings = {} } = await chrome.storage.local.get("settings");
+    await chrome.storage.local.set({ settings:{ ...settings, focusLimitEnabled:true, focusStart:"00:00", focusEnd:"00:00", focusDays:[0,1,2,3,4,5,6], focusDomains:["127.0.0.1"], autoOrganize:true, dedupeOnNavigate:true } });
+  });
+}
+const localCount = async (control) => (await control.evaluate(() => chrome.tabs.query({}))).filter((tab) => (tab.pendingUrl || tab.url)?.startsWith(origin)).length;
+
+test("Cmd/Ctrl-clicking links from a limited site opens at most 3 tabs on it", async () => {
+  const control = await context.newPage(); await control.goto(`chrome-extension://${extensionId}/dashboard.html`);
+  await limitLocalhost(control);
+  const home = await context.newPage(); await home.goto(`${origin}/links`);
+  for (const name of ["one", "two", "three", "four", "five"]) await home.getByText(name, { exact:true }).click({ modifiers:[process.platform === "darwin" ? "Meta" : "Control"] });
+  await home.waitForTimeout(2500);
+  expect(await localCount(control)).toBe(3);
+  await home.close(); await control.close();
+});
+
+test("the limit still holds for tabs open before Tabby reloaded itself", async () => {
+  // A reload (self-update) or browser restart empties chrome.storage.session, where Tabby tracks each tab's domain.
+  const control = await context.newPage(); await control.goto(`chrome-extension://${extensionId}/dashboard.html`);
+  await limitLocalhost(control);
+  const elsewhere = `${origin.replace("127.0.0.1", "localhost")}/b?pre=0`;
+  const blank = await context.newPage(); await blank.goto(elsewhere);
+  for (let i = 1; i <= 3; i++) { const t = await context.newPage(); await t.goto(`${origin}/a?pre=${i}`); }
+  await blank.waitForTimeout(1000);
+  const blankId = (await control.evaluate(() => chrome.tabs.query({}))).find((tab) => tab.url === elsewhere).id;
+  await control.evaluate(() => chrome.storage.session.clear());
+  const cdp = await context.newCDPSession(control); await cdp.send("ServiceWorker.enable"); await cdp.send("ServiceWorker.stopAllWorkers");
+  await expect.poll(() => control.evaluate(() => chrome.runtime.sendMessage({ type:"focus-status" }).then((r) => r.ok, () => false))).toBe(true);
+  await expect.poll(() => control.evaluate(async () => Object.keys((await chrome.storage.session.get("focusTabDomains")).focusTabDomains || {}).length)).toBeGreaterThan(0);
+  await control.evaluate(([id, url]) => chrome.tabs.update(id, { url }), [blankId, `${origin}/a?pre=4`]);
+  await expect.poll(async () => (await control.evaluate(() => chrome.tabs.query({}))).some((tab) => tab.id === blankId), { timeout:5000 }).toBe(false);
+  expect(await localCount(control)).toBe(3);
+  await control.close();
+});
+
+test("with default settings, switching tabs collapses the group left and expands the group entered", async () => {
+  const control = await context.newPage(); await control.goto(`chrome-extension://${extensionId}/dashboard.html`);
+  await control.evaluate(async () => { const { settings = {} } = await chrome.storage.local.get("settings"); await chrome.storage.local.set({ settings:{ ...settings, autoOrganize:true, dedupeOnNavigate:true, collapseOnLeave:true, focusLimitEnabled:false } }); });
+  const local = origin.replace("127.0.0.1", "localhost");
+  const x = await context.newPage(); await x.goto(`${origin}/a?site=x`);
+  const yt = await context.newPage(); await yt.goto(`${local}/b?site=yt`);
+  await x.waitForTimeout(1500);
+  const groupOf = async (url) => (await control.evaluate(() => chrome.tabs.query({}))).find((t) => t.url === url)?.groupId;
+  const collapsed = async (url) => { const id = await groupOf(url); return id >= 0 ? (await control.evaluate((g) => chrome.tabGroups.get(g), id)).collapsed : "ungrouped"; };
+  await expect.poll(async () => (await groupOf(`${origin}/a?site=x`)) >= 0 && (await groupOf(`${local}/b?site=yt`)) >= 0).toBe(true);
+  for (let round = 0; round < 3; round++) {
+    await x.bringToFront();
+    await expect.poll(async () => [await collapsed(`${origin}/a?site=x`), await collapsed(`${local}/b?site=yt`)]).toEqual([false, true]);
+    await yt.bringToFront();
+    await expect.poll(async () => [await collapsed(`${origin}/a?site=x`), await collapsed(`${local}/b?site=yt`)]).toEqual([true, false]);
+  }
+  await x.close(); await yt.close(); await control.close();
 });

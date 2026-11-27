@@ -53,6 +53,16 @@ async function enforceTabLimit(tab, { created = false } = {}) {
   return { closed: true, domain };
 }
 
+// A Tabby reload (self-update) or browser restart empties session storage. Recording every open tab
+// before any check runs means a tab already open then still counts as entering a domain later.
+async function seedFocusTabDomains() {
+  if ((await chrome.storage.session.get("focusTabDomains")).focusTabDomains) return;
+  const { focusDomains } = await settings();
+  const tabs = await chrome.tabs.query({});
+  await chrome.storage.session.set({ focusTabDomains:Object.fromEntries(tabs.map((tab) => [tab.id, restrictedDomainForUrl(tab.url || "", focusDomains)])) });
+}
+focusLimitQueue = seedFocusTabDomains().catch(() => {});
+
 // Checks run one at a time in event order, so a burst of new tabs sees each earlier close.
 function queueFocusLimitCheck(tab, options) {
   const next = focusLimitQueue.then(() => enforceTabLimit(tab, options));
