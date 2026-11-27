@@ -119,6 +119,8 @@ test("Chrome assigns the organize and save-session keyboard shortcuts", async ()
   const mac = process.platform === "darwin";
   expect(keys["save-session"]).toBe(mac ? "⇧⌘S" : "Ctrl+Shift+S");
   expect(keys["organize-tabs"]).toBe(mac ? "⇧⌘X" : "Ctrl+Shift+X");
+  expect(keys["next-tab"]).toBe(mac ? "⌃⇧→" : "Alt+Shift+Right");
+  expect(keys["previous-tab"]).toBe(mac ? "⌃⇧←" : "Alt+Shift+Left");
   await page.close();
 });
 
@@ -222,6 +224,33 @@ test("collapses the group just left and expands the group entered", async () => 
   await first.waitForTimeout(650);
   await expect.poll(async () => { const groups = await control.evaluate((windowId) => chrome.tabGroups.query({ windowId }), a.windowId); return [groups.find((g) => g.id === ga)?.collapsed, groups.find((g) => g.id === gb)?.collapsed]; }).toEqual([true, false]);
   await control.close();
+});
+
+test("next and previous tab step into collapsed groups and wrap around", async () => {
+  const control = await context.newPage(); await control.goto(`chrome-extension://${extensionId}/dashboard.html`);
+  await control.evaluate(async () => { const { settings = {} } = await chrome.storage.local.get("settings"); await chrome.storage.local.set({ settings:{ ...settings, autoOrganize:false, collapseOnLeave:true, collapseInactive:false } }); });
+  const local = origin.replace("127.0.0.1", "localhost");
+  const win = await control.evaluate((urls) => chrome.windows.create({ url:urls, focused:false }), [`${origin}/a?cycle=1`, `${local}/b?cycle=2`]);
+  await expect.poll(async () => (await control.evaluate((windowId) => chrome.tabs.query({ windowId }), win.id)).every((t) => t.status === "complete")).toBe(true);
+  const send = (message) => control.evaluate((m) => chrome.runtime.sendMessage(m), message);
+  expect((await send({ type:"organize", windowId:win.id })).ok).toBe(true);
+  const strip = async () => {
+    const [tabs, groups] = await control.evaluate(async (windowId) => [await chrome.tabs.query({ windowId }), await chrome.tabGroups.query({ windowId })], win.id);
+    const collapsed = new Set(groups.filter((g) => g.collapsed).map((g) => g.id));
+    return tabs.sort((x, y) => x.index - y.index).map((t) => `${new URL(t.url).hostname}${t.active ? "*" : ""}${collapsed.has(t.groupId) ? "-" : ""}`);
+  };
+  const [a, b] = (await control.evaluate((windowId) => chrome.tabs.query({ windowId }), win.id)).sort((x, y) => x.index - y.index);
+  expect(a.groupId).not.toBe(b.groupId);
+  await control.evaluate((id) => chrome.tabs.update(id, { active:true }), a.id);
+  await control.evaluate((groupId) => chrome.tabGroups.update(groupId, { collapsed:true }), b.groupId);
+  await expect.poll(strip).toEqual(["127.0.0.1*", "localhost-"]);
+  expect((await send({ type:"cycle-tab", windowId:win.id, step:1 })).activated).toBe(b.id);
+  await expect.poll(strip).toEqual(["127.0.0.1-", "localhost*"]);
+  expect((await send({ type:"cycle-tab", windowId:win.id, step:1 })).activated).toBe(a.id);
+  await expect.poll(strip).toEqual(["127.0.0.1*", "localhost-"]);
+  expect((await send({ type:"cycle-tab", windowId:win.id, step:-1 })).activated).toBe(b.id);
+  await expect.poll(strip).toEqual(["127.0.0.1-", "localhost*"]);
+  await control.evaluate((id) => chrome.windows.remove(id), win.id); await control.close();
 });
 
 test("merges normal windows while preserving pinned state", async () => {

@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Tabby",
-  "version": "2.5.0",
+  "version": "2.6.0",
   "description": "Friendly tab organization, focus-hour domain limits, sessions, deduplication, and window consolidation.",
   "icons": {
     "16": "icons/tabby-16.png",
@@ -28,6 +28,14 @@
     "save-session": {
       "suggested_key": { "default": "Ctrl+Shift+S", "mac": "Command+Shift+S" },
       "description": "Save the current session"
+    },
+    "next-tab": {
+      "suggested_key": { "default": "Alt+Shift+Right", "mac": "MacCtrl+Shift+Right" },
+      "description": "Next tab, including tabs in collapsed groups"
+    },
+    "previous-tab": {
+      "suggested_key": { "default": "Alt+Shift+Left", "mac": "MacCtrl+Shift+Left" },
+      "description": "Previous tab, including tabs in collapsed groups"
     }
   }
 }

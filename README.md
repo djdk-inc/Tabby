@@ -10,6 +10,7 @@ Tabby is a local-first Manifest V3 Chrome extension that consolidates the reques
 - Runs merge windows, URL deduplication, grouping/sorting, and inactive-group collapse together through **Organize**.
 - Collapses groups after a configurable inactive period and reopens the active group.
 - Collapses the group you leave immediately and expands the group you enter (default on).
+- Steps to the next or previous tab with a shortcut, including tabs inside collapsed groups (Chrome's `Ctrl+Tab` skips those), wrapping at the ends.
 - Removes duplicate URLs, optionally ignoring fragments and common tracking parameters.
 - Never automatically closes or regroups a pinned or currently audible tab when protection is enabled.
 - Saves and restores multi-window sessions, including pinned, muted, and incognito state; each window reopens in the mode it was saved in.
@@ -24,11 +25,11 @@ Tabby is a local-first Manifest V3 Chrome extension that consolidates the reques
 
 ## Install in Chrome
 
-1. Unzip `tabby-2.5.0.zip`.
+1. Unzip `tabby-2.6.0.zip`.
 2. Open `chrome://extensions`.
 3. Turn on **Developer mode**.
 4. Click **Load unpacked**.
-5. Select the unzipped `tabby-2.5.0` folder—the folder containing `manifest.json`.
+5. Select the unzipped `tabby-2.6.0` folder—the folder containing `manifest.json`.
 6. Pin **Tabby** from Chrome's Extensions menu if you want one-click access.
 
 Chrome may show a warning for developer-mode extensions after a restart. This build is intentionally unpacked and has not been submitted to the Chrome Web Store.
@@ -37,11 +38,13 @@ Keyboard shortcuts on macOS:
 
 - `Command+Shift+X`: run the complete **Organize** workflow
 - `Command+Shift+S`: save the current session (the Tabby icon shows a ✓)
+- `Control+Shift+→` / `Control+Shift+←`: next / previous tab, including collapsed groups
 
 Keyboard shortcuts on Windows/Linux:
 
 - `Ctrl+Shift+X`: run the complete **Organize** workflow
 - `Ctrl+Shift+S`: save the current session
+- `Alt+Shift+Right` / `Alt+Shift+Left`: next / previous tab, including collapsed groups
 
 Chrome can leave a suggested shortcut unassigned when it conflicts with the browser or another extension. Verify or change the active binding at `chrome://extensions/shortcuts`.
 

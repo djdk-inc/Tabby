@@ -1,5 +1,5 @@
 import {
-  DEFAULTS, FOCUS_TAB_LIMIT, canonicalUrl, chooseDuplicateKeeper, groupLabel, groupTitle,
+  DEFAULTS, FOCUS_TAB_LIMIT, adjacentTabId, canonicalUrl, chooseDuplicateKeeper, groupLabel, groupTitle,
   addToErrorLog, focusLimitExceeded, groupsInOrder, upgradeFocusDefaults, isFocusScheduleActive, isProtected, isWebUrl, mergePlan, restrictedDomainForUrl, tabDestination
 } from "./core.js";
 import { UserFacingError } from "./errors.js";
@@ -308,6 +308,15 @@ async function restoreSessionWindow(id, index) {
   return { windows: (await restoreWindow(savedWindow, true)) ? 1 : 0 };
 }
 
+// Activating a tab in a collapsed group expands it; the activation listener collapses the group left behind.
+async function cycleTab(windowId, step) {
+  const tabs = await chrome.tabs.query({ windowId });
+  const target = adjacentTabId(tabs, tabs.find((tab) => tab.active)?.id, step);
+  if (target === null) return { activated: null };
+  try { await chrome.tabs.update(target, { active:true }); } catch { return { activated: null }; }
+  return { activated: target };
+}
+
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   (async () => {
     const current = sender.tab?.windowId || (await chrome.windows.getCurrent()).id;
@@ -317,6 +326,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       case "dedupe": return dedupeWindow(message.windowId || current);
       case "merge": return mergeWindows(message.windowId || current);
       case "collapse": return collapseInactiveGroups();
+      case "cycle-tab": return cycleTab(message.windowId || current, message.step);
       case "save-session": return saveCurrentSession(message.name);
       case "restore-session": return restoreSession(message.id);
       case "restore-window": return restoreSessionWindow(message.id, message.index);
@@ -377,11 +387,21 @@ async function handleTabActivated({ tabId, windowId }) {
     }, 300));
   }
 }
-chrome.tabs.onActivated.addListener((info) => {
-  const prior = activationQueues.get(info.windowId) || Promise.resolve();
-  const next = prior.then(() => handleTabActivated(info)).catch(() => {});
-  activationQueues.set(info.windowId, next);
-  next.finally(() => { if (activationQueues.get(info.windowId) === next) activationQueues.delete(info.windowId); });
+function queueActivation(windowId, work) {
+  const prior = activationQueues.get(windowId) || Promise.resolve();
+  const next = prior.then(work).catch(() => {});
+  activationQueues.set(windowId, next);
+  next.finally(() => { if (activationQueues.get(windowId) === next) activationQueues.delete(windowId); });
+}
+chrome.tabs.onActivated.addListener((info) => queueActivation(info.windowId, () => handleTabActivated(info)));
+// The active tab joining a group (Organize, the user dragging it) makes that the group a later switch leaves.
+chrome.tabs.onUpdated.addListener((tabId, change, tab) => {
+  if (!("groupId" in change) || !tab.active) return;
+  queueActivation(tab.windowId, async () => {
+    const activeGroupByWindow = (await chrome.storage.session.get("activeGroupByWindow")).activeGroupByWindow || {};
+    activeGroupByWindow[tab.windowId] = change.groupId;
+    await chrome.storage.session.set({ activeGroupByWindow });
+  });
 });
 chrome.alarms.onAlarm.addListener((alarm) => {
   if (alarm.name !== "inactive-collapse") return;
@@ -399,4 +419,6 @@ async function flashSaved() {
 chrome.commands.onCommand.addListener((command) => inBackground((async () => {
   if (command === "organize-tabs") await organizeEverything((await chrome.windows.getCurrent()).id);
   if (command === "save-session") { await saveCurrentSession(); await flashSaved(); }
+  if (command === "next-tab") await cycleTab((await chrome.windows.getCurrent()).id, 1);
+  if (command === "previous-tab") await cycleTab((await chrome.windows.getCurrent()).id, -1);
 })()));

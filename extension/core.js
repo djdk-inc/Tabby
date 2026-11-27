@@ -210,3 +210,11 @@ export function savedUrls(sessions, filter = "all", stripTracking = true) {
     .filter((e) => filter === "all" || (filter === "incognito" ? e.incognito : !e.incognito))
     .sort((a, b) => a.url.localeCompare(b.url));
 }
+
+// Chrome's own tab switching skips tabs inside collapsed groups; this steps through every tab in strip order, wrapping.
+export function adjacentTabId(tabs, activeId, step) {
+  const ordered = [...tabs].sort((a, b) => a.index - b.index);
+  const at = ordered.findIndex((tab) => tab.id === activeId);
+  if (at < 0 || ordered.length < 2) return null;
+  return ordered[(at + step + ordered.length) % ordered.length].id;
+}
